@@ -49,6 +49,25 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
+    
+    // ViewModel
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    
+    // Image Loading
+    implementation(libs.coil.compose)
+    
+    // Work Manager for notifications
+    implementation(libs.androidx.work.runtime.ktx)
+    
+    // Permissions
+    implementation(libs.permissions.compose)
+    
+    // Image Compression
+    implementation(libs.image.compressor)
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
