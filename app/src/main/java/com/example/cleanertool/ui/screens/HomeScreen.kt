@@ -1,74 +1,61 @@
 package com.example.cleanertool.ui.screens
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.cleanertool.navigation.Screen
 
-data class Feature(
-    val title: String,
-    val description: String,
-    val icon: ImageVector,
-    val route: String,
-    val color: androidx.compose.ui.graphics.Color
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavController) {
-    val features = listOf(
-        Feature(
-            title = "Storage & Gallery",
-            description = "Scan and manage your photos",
-            icon = Icons.Default.Star,
-            route = Screen.StorageGallery.route,
-            color = MaterialTheme.colorScheme.primary
+    // Animation for the clean button
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        Feature(
-            title = "Battery & Charging",
-            description = "Monitor battery health",
-            icon = Icons.Default.Settings,
-            route = Screen.BatteryCharging.route,
-            color = MaterialTheme.colorScheme.secondary
-        ),
-        Feature(
-            title = "App Management",
-            description = "Manage installed apps",
-            icon = Icons.Default.Menu,
-            route = Screen.AppManagement.route,
-            color = MaterialTheme.colorScheme.tertiary
-        ),
-        Feature(
-            title = "Speaker Maintenance",
-            description = "Clean and test speakers",
-            icon = Icons.Default.Info,
-            route = Screen.SpeakerMaintenance.route,
-            color = MaterialTheme.colorScheme.error
-        ),
-        Feature(
-            title = "Uninstall Reminder",
-            description = "Find unused apps",
-            icon = Icons.Default.Delete,
-            route = Screen.UninstallReminder.route,
-            color = MaterialTheme.colorScheme.primaryContainer
-        )
+        label = "scale"
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cleaner Toolbox", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Cleaner Toolbox",
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            IconButton(onClick = { /* Settings */ }) {
+                                Icon(Icons.Default.Settings, "Settings")
+                            }
+                            IconButton(onClick = { /* Lock */ }) {
+                                Icon(Icons.Default.Lock, "Lock")
+                            }
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -79,77 +66,122 @@ fun HomeScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "Clean & Optimize Your Device",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            Text(
-                text = "All-in-one toolbox for device maintenance",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Center: Animated Round Clean Button
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(features) { feature ->
-                    FeatureCard(
-                        feature = feature,
-                        onClick = { navController.navigate(feature.route) }
+                // Animated round clean button
+                FloatingActionButton(
+                    onClick = { navController.navigate(Screen.Scan.route) },
+                    modifier = Modifier
+                        .size(120.dp)
+                        .scale(scale),
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Clean",
+                        modifier = Modifier.size(48.dp),
+                        tint = Color.White
                     )
                 }
+                
+                // Junk Cleaner button below
+                Button(
+                    onClick = { navController.navigate(Screen.Scan.route) },
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                ) {
+                    Text("Junk Cleaner", fontWeight = FontWeight.Bold)
+                }
             }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Three Cards Section
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Battery Info Card
+                FeatureCard(
+                    title = "Battery Info",
+                    icon = Icons.Default.Settings,
+                    onClick = { navController.navigate(Screen.BatteryCharging.route) },
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                
+                // App Process Card
+                FeatureCard(
+                    title = "App Process",
+                    icon = Icons.Default.Phone,
+                    onClick = { navController.navigate(Screen.RamProcess.route) },
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                
+                // Photo Compression Card
+                FeatureCard(
+                    title = "Photo Compression",
+                    icon = Icons.Default.Star,
+                    onClick = { navController.navigate(Screen.StorageGallery.route) },
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
 fun FeatureCard(
-    feature: Feature,
-    onClick: () -> Unit
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    color: Color
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(140.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = feature.color.copy(alpha = 0.1f)
+            containerColor = color.copy(alpha = 0.1f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    modifier = Modifier.size(32.dp),
+                    tint = color
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             Icon(
-                imageVector = feature.icon,
-                contentDescription = feature.title,
-                modifier = Modifier.size(48.dp),
-                tint = feature.color
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = feature.title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = feature.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                imageVector = Icons.Default.ArrowForward,
+                contentDescription = "Navigate",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
