@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import com.example.cleanertool.data.ImageData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 object MediaUtils {
     suspend fun scanImages(context: Context): List<ImageData> = withContext(Dispatchers.IO) {
@@ -16,7 +17,8 @@ object MediaUtils {
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.DATE_MODIFIED
+            MediaStore.Images.Media.DATE_MODIFIED,
+            MediaStore.Images.Media.DATA
         )
 
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -36,6 +38,7 @@ object MediaUtils {
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED)
+            val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
@@ -53,6 +56,39 @@ object MediaUtils {
         }
 
         images
+    }
+    
+    suspend fun getFileFromUri(context: Context, uri: Uri): File? = withContext(Dispatchers.IO) {
+        try {
+            // Try to get file path from URI
+            val projection = arrayOf(MediaStore.Images.Media.DATA)
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
+                    val filePath = cursor.getString(columnIndex)
+                    if (filePath != null) {
+                        val file = File(filePath)
+                        if (file.exists()) {
+                            return@withContext file
+                        }
+                    }
+                }
+            }
+            
+            // If file path not available, create temp file from URI
+            val inputStream = context.contentResolver.openInputStream(uri)
+            inputStream?.use { stream ->
+                val tempFile = File(context.cacheDir, "temp_compress_${System.currentTimeMillis()}.jpg")
+                tempFile.outputStream().use { output ->
+                    stream.copyTo(output)
+                }
+                return@withContext tempFile
+            }
+            
+            null
+        } catch (e: Exception) {
+            null
+        }
     }
 }
 

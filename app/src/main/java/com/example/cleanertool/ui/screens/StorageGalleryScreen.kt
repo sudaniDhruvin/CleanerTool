@@ -267,20 +267,63 @@ fun CompressionDialog(
     images: List<com.example.cleanertool.data.ImageData>,
     viewModel: StorageViewModel
 ) {
+    val context = LocalContext.current
+    val isLoading by viewModel.isLoading.collectAsState()
+    val compressionProgress by viewModel.compressionProgress.collectAsState()
+    val error by viewModel.error.collectAsState()
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isLoading) onDismiss() },
         title = { Text("Compress Images") },
         text = {
             Column {
-                Text("Select compression option:")
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("• Batch compression: Compress all images")
-                Text("• Single image: Select an image to compress")
+                if (isLoading) {
+                    if (compressionProgress != null) {
+                        Text("Compressing images... ${compressionProgress!!.first}/${compressionProgress!!.second}")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = compressionProgress!!.first.toFloat() / compressionProgress!!.second.toFloat(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Text("Compressing images...")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                    }
+                } else {
+                    Text("This will compress all images by 60% (reducing file size while maintaining quality).")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Total images: ${images.size}")
+                }
+                if (error != null && !isLoading) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("OK")
+            if (isLoading) {
+                TextButton(onClick = {}) {
+                    Text("Compressing...")
+                }
+            } else {
+                TextButton(
+                    onClick = {
+                        viewModel.compressImages(context, images)
+                    }
+                ) {
+                    Text("Compress All")
+                }
+            }
+        },
+        dismissButton = {
+            if (!isLoading) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
             }
         }
     )
