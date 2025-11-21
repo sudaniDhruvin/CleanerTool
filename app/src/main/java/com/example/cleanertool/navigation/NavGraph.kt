@@ -68,6 +68,24 @@ fun NavGraph(navController: NavHostController) {
         composable("settings") {
             SettingsScreen(navController = navController)
         }
+        composable("permission_management") {
+            PermissionManagementScreen(navController = navController)
+        }
+        composable("settings_menu") {
+            SettingsMenuScreen(navController = navController)
+        }
+        composable("feedback") {
+            FeedbackScreen(navController = navController)
+        }
+        composable("about") {
+            AboutScreen(navController = navController)
+        }
+        composable("rate_us") {
+            RateUsScreen(navController = navController)
+        }
+        composable("notification_settings") {
+            NotificationSettingsScreen(navController = navController)
+        }
         composable("image_detail") {
             ImageDetailScreen(navController = navController)
         }

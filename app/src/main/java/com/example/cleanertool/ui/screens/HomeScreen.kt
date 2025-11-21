@@ -74,7 +74,7 @@ fun HomeScreen(navController: NavController) {
                 ) {
                     // Lock icon
                     IconButton(
-                        onClick = { /* TODO: Handle lock action */ }
+                        onClick = { navController.navigate("permission_management") }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Lock,
@@ -86,7 +86,7 @@ fun HomeScreen(navController: NavController) {
                     
                     // Settings icon
                     IconButton(
-                        onClick = { navController.navigate("settings") }
+                        onClick = { navController.navigate("settings_menu") }
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,

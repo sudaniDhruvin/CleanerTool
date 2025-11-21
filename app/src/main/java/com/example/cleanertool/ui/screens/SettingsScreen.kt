@@ -22,16 +22,29 @@ import androidx.navigation.NavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.example.cleanertool.utils.PermissionUtils
+import com.example.cleanertool.utils.SettingsPreferencesManager
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun SettingsScreen(navController: NavController) {
     val context = LocalContext.current
-    var notificationsEnabled by remember { mutableStateOf(true) }
-    var autoScanEnabled by remember { mutableStateOf(false) }
+    val settingsPrefs = remember { SettingsPreferencesManager(context) }
     
-    val permissions = PermissionUtils.getAllRequiredPermissions()
-    val permissionsState = rememberMultiplePermissionsState(permissions)
+    // Battery Reminder states - load from preferences
+    var chargingReminderEnabled by remember { 
+        mutableStateOf(settingsPrefs.getChargingReminder()) 
+    }
+    var chargingReportReminderEnabled by remember { 
+        mutableStateOf(settingsPrefs.getChargingReportReminder()) 
+    }
+    var lowBatteryReminderEnabled by remember { 
+        mutableStateOf(settingsPrefs.getLowBatteryReminder()) 
+    }
+    
+    // Uninstall Reminder state - load from preferences
+    var uninstallReminderEnabled by remember { 
+        mutableStateOf(settingsPrefs.getUninstallReminder()) 
+    }
 
     Scaffold(
         topBar = {
@@ -59,99 +72,66 @@ fun SettingsScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .background(Color(0xFFF5F5F5))
+                .background(Color.White)
         ) {
-            // Permissions Section
-            SettingsSection(title = "Permissions") {
-                PermissionSettingItem(
-                    icon = Icons.Default.Star,
-                    title = "Storage & Media",
-                    description = "Required for scanning and cleaning files",
-                    isGranted = permissionsState.allPermissionsGranted,
-                    onRequest = {
-                        permissionsState.launchMultiplePermissionRequest()
-                    }
-                )
-                
-                PermissionSettingItem(
-                    icon = Icons.Default.Notifications,
-                    title = "Notifications",
-                    description = "Receive cleaning reminders and updates",
-                    isGranted = permissionsState.allPermissionsGranted,
-                    onRequest = {
-                        permissionsState.launchMultiplePermissionRequest()
-                    }
-                )
-                
-                PermissionSettingItem(
-                    icon = Icons.Default.Settings,
-                    title = "Microphone",
-                    description = "For speaker cleaning functionality",
-                    isGranted = permissionsState.allPermissionsGranted,
-                    onRequest = {
-                        permissionsState.launchMultiplePermissionRequest()
-                    }
-                )
-            }
-            
-            // Preferences Section
-            SettingsSection(title = "Preferences") {
+            // Battery Reminder Section
+            SettingsSection(title = "Battery Reminder") {
                 SettingsSwitchItem(
-                    icon = Icons.Default.Notifications,
-                    title = "Enable Notifications",
-                    description = "Receive regular cleaning reminders",
-                    checked = notificationsEnabled,
-                    onCheckedChange = { notificationsEnabled = it }
+                    icon = Icons.Default.Settings,
+                    title = "Charging Reminder",
+                    description = "Remind of battery charging status",
+                    checked = chargingReminderEnabled,
+                    onCheckedChange = { 
+                        chargingReminderEnabled = it
+                        settingsPrefs.setChargingReminder(it)
+                    }
                 )
                 
                 SettingsSwitchItem(
-                    icon = Icons.Default.Star,
-                    title = "Auto Scan on Launch",
-                    description = "Automatically scan when app opens",
-                    checked = autoScanEnabled,
-                    onCheckedChange = { autoScanEnabled = it }
+                    icon = Icons.Default.Info,
+                    title = "Charging Report Reminder",
+                    description = "Show charging details report",
+                    checked = chargingReportReminderEnabled,
+                    onCheckedChange = { 
+                        chargingReportReminderEnabled = it
+                        settingsPrefs.setChargingReportReminder(it)
+                    }
+                )
+                
+                SettingsSwitchItem(
+                    icon = Icons.Default.Warning,
+                    title = "Low Battery Reminder",
+                    description = "Remind battery is low",
+                    checked = lowBatteryReminderEnabled,
+                    onCheckedChange = { 
+                        lowBatteryReminderEnabled = it
+                        settingsPrefs.setLowBatteryReminder(it)
+                    }
                 )
             }
             
-            // App Info Section
-            SettingsSection(title = "About") {
-                SettingsItem(
-                    icon = Icons.Default.Info,
-                    title = "App Version",
-                    description = "1.0.0",
-                    onClick = {}
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Info,
-                    title = "Help & Support",
-                    description = "Get help and contact support",
-                    onClick = {}
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Info,
-                    title = "Privacy Policy",
-                    description = "View our privacy policy",
-                    onClick = {}
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Info,
-                    title = "Terms of Service",
-                    description = "Read terms and conditions",
-                    onClick = {}
+            // Uninstall Reminder Section
+            SettingsSection(title = "Uninstall Reminder") {
+                SettingsSwitchItem(
+                    icon = Icons.Default.Delete,
+                    title = "Uninstall Reminder",
+                    description = "Remind when apps uninstalled",
+                    checked = uninstallReminderEnabled,
+                    onCheckedChange = { 
+                        uninstallReminderEnabled = it
+                        settingsPrefs.setUninstallReminder(it)
+                    }
                 )
             }
             
-            // System Settings
-            SettingsSection(title = "System") {
+            // Notification Reminder Section
+            SettingsSection(title = "Notification Reminder") {
                 SettingsItem(
-                    icon = Icons.Default.Settings,
-                    title = "System Settings",
-                    description = "Open Android system settings",
+                    icon = Icons.Default.Notifications,
+                    title = "Notification Reminder",
+                    description = "Remind optimization information",
                     onClick = {
-                        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                        navController.navigate("notification_settings")
                     }
                 )
             }
@@ -211,42 +191,34 @@ fun SettingsItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Color(0xFF2196F3),
-                    modifier = Modifier.size(24.dp)
-                )
-                Column {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                }
-            }
             Icon(
-                imageVector = Icons.Default.ArrowForward,
+                imageVector = icon,
                 contentDescription = null,
-                tint = Color.Gray
+                tint = Color(0xFF2196F3),
+                modifier = Modifier.size(24.dp)
             )
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
         }
+        Icon(
+            imageVector = Icons.Default.ArrowForward,
+            contentDescription = null,
+            tint = Color.Gray
+        )
     }
     HorizontalDivider()
 }
