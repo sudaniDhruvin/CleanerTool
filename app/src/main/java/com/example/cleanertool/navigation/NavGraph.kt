@@ -23,6 +23,9 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.Clean.route) {
             CleanScreen(navController = navController)
         }
+        composable(Screen.AppProcessScanning.route) {
+            AppProcessScanningScreen(navController = navController)
+        }
         composable(Screen.RamProcess.route) {
             RamProcessScreen(navController = navController)
         }
@@ -123,6 +126,7 @@ sealed class Screen(val route: String) {
     object Landing : Screen("landing")
     object Scan : Screen("scan")
     object Clean : Screen("clean")
+    object AppProcessScanning : Screen("app_process_scanning")
     object RamProcess : Screen("ram_process")
     object Permissions : Screen("permissions")
     object Home : Screen("home")

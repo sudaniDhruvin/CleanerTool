@@ -51,14 +51,52 @@ fun HomeScreen(navController: NavController) {
             // Top spacing for status bar
             Spacer(modifier = Modifier.height(48.dp))
             
-            // App Title in top left
-            Text(
-                text = "Cleaner Toolbox",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
+            // Header with app name on left and icons on right
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // App Title on left
+                Text(
+                    text = "Cleaner Toolbox",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                
+                // Lock and Settings icons on right
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Lock icon
+                    IconButton(
+                        onClick = { /* TODO: Handle lock action */ }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Lock",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    
+                    // Settings icon
+                    IconButton(
+                        onClick = { navController.navigate("settings") }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
             
             // Large CLEAN circle button
             Box(
@@ -175,7 +213,7 @@ fun HomeScreen(navController: NavController) {
                         title = "App Process",
                         icon = Icons.Default.Phone,
                         color = Color(0xFF2196F3),
-                        onClick = { navController.navigate(Screen.RamProcess.route) },
+                        onClick = { navController.navigate(Screen.AppProcessScanning.route) },
                         modifier = Modifier.weight(1f)
                     )
                     
