@@ -1,9 +1,12 @@
 package com.example.cleanertool.ui.screens
 
 import android.content.Context
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -36,7 +39,7 @@ fun ScanScreen(navController: NavController) {
     val filesByCategory by viewModel.filesByCategory.collectAsState()
     
     var selectedCategories by remember {
-        mutableStateOf(setOf(FileType.JUNK, FileType.OBSOLETE_APK, FileType.TEMP, FileType.LOG))
+        mutableStateOf(setOf(FileType.JUNK))
     }
 
     // Start scanning when screen loads
@@ -72,7 +75,7 @@ fun ScanScreen(navController: NavController) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
+                    containerColor = Color(0xFFFF5722)
                 )
             )
         },
@@ -85,10 +88,9 @@ fun ScanScreen(navController: NavController) {
                 ) {
                     Button(
                         onClick = {
-                            // Pass selected categories to clean screen via navigation
-                            navController.navigate("clean") {
-                                popUpTo("scan") { inclusive = true }
-                            }
+                            // Store selected categories in ViewModel for CleanScreen to access
+                            viewModel.setSelectedCategories(selectedCategories)
+                            navController.navigate("clean")
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -101,11 +103,7 @@ fun ScanScreen(navController: NavController) {
                         enabled = hasSelectedFiles && error == null
                     ) {
                         Text(
-                            text = if (hasSelectedFiles) {
-                                "CLEAN ${viewModel.formatFileSize(selectedTotalSize)}"
-                            } else {
-                                "NO FILES TO CLEAN"
-                            },
+                            text = "CLEAN",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -116,13 +114,13 @@ fun ScanScreen(navController: NavController) {
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize()) {
-            // Orange-red gradient header
+            // Orange/Red gradient background (top section)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(280.dp)
                     .background(
-                        Brush.verticalGradient(
+                        brush = Brush.linearGradient(
                             colors = listOf(
                                 Color(0xFFFF7043),
                                 Color(0xFFFF5722)
@@ -135,219 +133,251 @@ fun ScanScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
+                    .verticalScroll(rememberScrollState())
             ) {
-                // Header content
-                Column(
+                // Orange section - Size display and scanning status
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .height(240.dp)
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFFFF7043),
+                                    Color(0xFFFF5722)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 24.dp, vertical = 32.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (isScanning) {
-                            viewModel.formatFileSize(totalSize)
-                        } else {
-                            viewModel.formatFileSize(selectedTotalSize)
-                        },
-                        style = MaterialTheme.typography.displayLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    if (isScanning) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        // Large size display
                         Text(
-                            text = "Scanning...",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = viewModel.formatFileSize(totalSize),
+                            style = MaterialTheme.typography.displayLarge,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         
-                        if (scanningPath.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(0xFFE64A19)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Scanning text with animated dots
+                        if (isScanning) {
+                            ScanningText()
+                        } else {
+                            Text(
+                                text = "Scan Complete",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Scanning path bar
+                        if (isScanning && scanningPath.isNotEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        color = Color.White.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
                             ) {
                                 Text(
                                     text = scanningPath,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White
+                                    color = Color.White,
+                                    maxLines = 1
                                 )
                             }
                         }
-                    } else if (error != null) {
-                        Text(
-                            text = "Scan Failed",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color(0xFFFFEBEE)
-                        )
-                    } else {
-                        Text(
-                            text = if (hasSelectedFiles) "Scan Complete" else "No Files Found",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White
-                        )
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Category list
+                // White section - Category list
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color.White)
-                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                        .padding(vertical = 16.dp)
                 ) {
-                    val categories = listOf(
-                        Triple(FileType.JUNK, "Junk Files", Icons.Default.Delete),
-                        Triple(FileType.OBSOLETE_APK, "Obsolete APK files", Icons.Default.Phone),
-                        Triple(FileType.TEMP, "Temp Files", Icons.Default.Settings),
-                        Triple(FileType.LOG, "Log Files", Icons.Default.Info)
+                    // Junk Files
+                    CategoryItem(
+                        icon = Icons.Default.Delete,
+                        title = "Junk Files",
+                        size = viewModel.getTotalSizeByCategory(FileType.JUNK),
+                        isScanning = isScanning && currentScanningCategory == FileType.JUNK,
+                        isSelected = selectedCategories.contains(FileType.JUNK),
+                        onToggle = {
+                            selectedCategories = if (selectedCategories.contains(FileType.JUNK)) {
+                                selectedCategories - FileType.JUNK
+                            } else {
+                                selectedCategories + FileType.JUNK
+                            }
+                        }
                     )
                     
-                    categories.forEach { (type, title, icon) ->
-                        val fileSize = viewModel.getTotalSizeByCategory(type)
-                        val isCurrentlyScanning = isScanning && currentScanningCategory == type
-                        
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = null,
-                                    tint = Color(0xFF2196F3),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = viewModel.formatFileSize(fileSize),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.Gray
-                                )
-                                
-                                if (isCurrentlyScanning) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(20.dp),
-                                        strokeWidth = 2.dp,
-                                        color = Color(0xFF2196F3)
-                                    )
-                                } else {
-                                    Checkbox(
-                                        checked = selectedCategories.contains(type),
-                                        onCheckedChange = { isChecked ->
-                                            if (isChecked) {
-                                                selectedCategories = selectedCategories + type
-                                            } else {
-                                                selectedCategories = selectedCategories - type
-                                            }
-                                        },
-                                        enabled = !isScanning && fileSize > 0
-                                    )
-                                }
+                    // Obsolete APK files
+                    CategoryItem(
+                        icon = Icons.Default.Phone,
+                        title = "Obsolete APK files",
+                        size = viewModel.getTotalSizeByCategory(FileType.OBSOLETE_APK),
+                        isScanning = isScanning && currentScanningCategory == FileType.OBSOLETE_APK,
+                        isSelected = selectedCategories.contains(FileType.OBSOLETE_APK),
+                        onToggle = {
+                            selectedCategories = if (selectedCategories.contains(FileType.OBSOLETE_APK)) {
+                                selectedCategories - FileType.OBSOLETE_APK
+                            } else {
+                                selectedCategories + FileType.OBSOLETE_APK
                             }
                         }
-                        
-                        HorizontalDivider()
-                    }
+                    )
                     
-                    // Show error if any
-                    if (error != null && !isScanning) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFFFEBEE)
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = Color(0xFFD32F2F)
-                                    )
-                                    Text(
-                                        text = error ?: "Unknown error occurred",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = Color(0xFFD32F2F),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(
-                                    onClick = {
-                                        viewModel.scanDevice(context)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFD32F2F)
-                                    )
-                                ) {
-                                    Text("Retry Scan")
-                                }
+                    // Temp Files
+                    CategoryItem(
+                        icon = Icons.Default.Settings,
+                        title = "Temp Files",
+                        size = viewModel.getTotalSizeByCategory(FileType.TEMP),
+                        isScanning = isScanning && currentScanningCategory == FileType.TEMP,
+                        isSelected = selectedCategories.contains(FileType.TEMP),
+                        onToggle = {
+                            selectedCategories = if (selectedCategories.contains(FileType.TEMP)) {
+                                selectedCategories - FileType.TEMP
+                            } else {
+                                selectedCategories + FileType.TEMP
                             }
                         }
-                    }
+                    )
                     
-                    // Show empty state if scan complete but no files found
-                    if (!isScanning && error == null && unnecessaryFiles.isEmpty()) {
-                        Spacer(modifier = Modifier.height(32.dp))
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = Color(0xFF4CAF50)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "No junk files found!",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Your device is clean",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray
-                            )
+                    // Log Files
+                    CategoryItem(
+                        icon = Icons.Default.Info,
+                        title = "Log Files",
+                        size = viewModel.getTotalSizeByCategory(FileType.LOG),
+                        isScanning = isScanning && currentScanningCategory == FileType.LOG,
+                        isSelected = selectedCategories.contains(FileType.LOG),
+                        onToggle = {
+                            selectedCategories = if (selectedCategories.contains(FileType.LOG)) {
+                                selectedCategories - FileType.LOG
+                            } else {
+                                selectedCategories + FileType.LOG
+                            }
                         }
-                    }
+                    )
+                    
+                    // Add bottom padding to prevent content from being cut off by button
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
             }
         }
     }
 }
 
+@Composable
+fun ScanningText() {
+    var dotCount by remember { mutableStateOf(0) }
+    
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500)
+            dotCount = (dotCount + 1) % 4
+        }
+    }
+    
+    Text(
+        text = "Scanning${".".repeat(dotCount)}",
+        style = MaterialTheme.typography.titleMedium,
+        color = Color.White.copy(alpha = 0.9f)
+    )
+}
+
+@Composable
+fun CategoryItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    size: Long,
+    isScanning: Boolean,
+    isSelected: Boolean,
+    onToggle: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = Color(0xFF2196F3),
+                modifier = Modifier.size(32.dp)
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            // Title
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = Color.Black,
+                modifier = Modifier.weight(1f)
+            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            // Size or status
+            if (isScanning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = Color(0xFF2196F3)
+                )
+            } else {
+                Text(
+                    text = formatSize(size),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF2196F3),
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                
+                // Checkbox
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggle() },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = Color(0xFF2196F3),
+                        uncheckedColor = Color.Gray
+                    )
+                )
+            }
+        }
+    }
+}
+
+fun formatSize(bytes: Long): String {
+    return when {
+        bytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+        bytes >= 1024 * 1024 -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
+        bytes >= 1024 -> String.format("%.2f KB", bytes / 1024.0)
+        else -> "$bytes B"
+    }
+}

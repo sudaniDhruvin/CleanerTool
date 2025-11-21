@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.cleanertool.utils.AppUtils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,6 +53,13 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val _filesByCategory = MutableStateFlow<Map<FileType, List<UnnecessaryFile>>>(emptyMap())
     val filesByCategory: StateFlow<Map<FileType, List<UnnecessaryFile>>> = _filesByCategory.asStateFlow()
 
+    private val _selectedCategories = MutableStateFlow<Set<FileType>>(emptySet())
+    val selectedCategories: StateFlow<Set<FileType>> = _selectedCategories.asStateFlow()
+    
+    fun setSelectedCategories(categories: Set<FileType>) {
+        _selectedCategories.value = categories
+    }
+
     fun scanDevice(context: Context) {
         viewModelScope.launch {
             _isScanning.value = true
@@ -71,6 +79,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 _scanProgress.value = 0
                 _currentScanningCategory.value = FileType.JUNK
                 _scanningPath.value = "Scanning:/storage/emulated/0/Android/data/com.miu..."
+                delay(500) // Small delay for UI update
                 val junkFiles = withContext(Dispatchers.IO) { scanJunkFiles(context) }
                 filesByType[FileType.JUNK]?.addAll(junkFiles)
                 _scanProgress.value = 25
@@ -78,6 +87,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 // Step 2: Scan obsolete APK files (25-50%)
                 _currentScanningCategory.value = FileType.OBSOLETE_APK
                 _scanningPath.value = "Scanning:/storage/emulated/0/Download..."
+                delay(500)
                 val obsoleteApkFiles = withContext(Dispatchers.IO) { scanObsoleteApkFiles(context) }
                 filesByType[FileType.OBSOLETE_APK]?.addAll(obsoleteApkFiles)
                 _scanProgress.value = 50
@@ -85,6 +95,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 // Step 3: Scan temp files (50-75%)
                 _currentScanningCategory.value = FileType.TEMP
                 _scanningPath.value = "Scanning:/storage/emulated/0/Android/data..."
+                delay(500)
                 val tempFiles = withContext(Dispatchers.IO) { scanTempFiles(context) }
                 filesByType[FileType.TEMP]?.addAll(tempFiles)
                 _scanProgress.value = 75
@@ -92,6 +103,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 // Step 4: Scan log files (75-100%)
                 _currentScanningCategory.value = FileType.LOG
                 _scanningPath.value = "Scanning:/storage/emulated/0/Android/logs..."
+                delay(500)
                 val logFiles = withContext(Dispatchers.IO) { scanLogFiles(context) }
                 filesByType[FileType.LOG]?.addAll(logFiles)
                 _scanProgress.value = 100
@@ -114,32 +126,25 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun scanJunkFiles(context: Context): List<UnnecessaryFile> {
         val junkFiles = mutableListOf<UnnecessaryFile>()
         try {
-            // Scan app cache directories
+            // Only scan our own app's cache directories (allowed by Scoped Storage)
+            // Path: /data/data/<package>/cache
             val cacheDir = context.cacheDir
             if (cacheDir.exists()) {
+                _scanningPath.value = "Scanning:${cacheDir.absolutePath}"
                 scanDirectory(cacheDir, junkFiles, FileType.JUNK)
             }
             
+            // Path: /storage/emulated/0/Android/data/<package>/cache
             val externalCacheDir = context.externalCacheDir
             if (externalCacheDir?.exists() == true) {
+                _scanningPath.value = "Scanning:${externalCacheDir.absolutePath}"
                 scanDirectory(externalCacheDir, junkFiles, FileType.JUNK)
             }
 
-            // Scan Android/data cache directories
-            val androidDataDir = File(Environment.getExternalStorageDirectory(), "Android/data")
-            if (androidDataDir.exists() && androidDataDir.canRead()) {
-                androidDataDir.listFiles()?.forEach { appDir ->
-                    val cacheDir = File(appDir, "cache")
-                    if (cacheDir.exists() && cacheDir.canRead()) {
-                        scanDirectory(cacheDir, junkFiles, FileType.JUNK)
-                    }
-                }
-            }
-
-            // Scan Android/obb cache (though obb files shouldn't be deleted)
-            // We'll skip obb files as they're important for apps
+            // Note: We cannot scan other apps' cache directories due to Scoped Storage restrictions
+            // Only system apps and OEM cleaner apps can do this
         } catch (e: Exception) {
-            // Handle error silently
+            android.util.Log.e("ScanViewModel", "Error scanning junk files: ${e.message}")
         }
         return junkFiles
     }
@@ -151,27 +156,22 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             val installedPackages = packageManager.getInstalledPackages(PackageManager.GET_META_DATA)
             val installedPackageNames = installedPackages.map { it.packageName }.toSet()
 
-            // Scan Downloads directory for APK files
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (downloadsDir.exists() && downloadsDir.canRead()) {
-                scanDirectoryForApkFiles(downloadsDir, obsoleteApkFiles, installedPackageNames)
-            }
-
-            // Also check other common locations
-            val externalStorage = Environment.getExternalStorageDirectory()
-            val commonDirs = listOf(
-                File(externalStorage, "Download"),
-                File(externalStorage, "Downloads"),
-                File(externalStorage, "APK")
-            )
-
-            commonDirs.forEach { dir ->
-                if (dir.exists() && dir.canRead()) {
-                    scanDirectoryForApkFiles(dir, obsoleteApkFiles, installedPackageNames)
+            // Note: On Android 10+, we cannot directly access Downloads folder
+            // This would require Storage Access Framework (SAF) - user must select folder
+            // For now, we'll scan only if we have access (Android 9 and below)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (downloadsDir.exists() && downloadsDir.canRead()) {
+                    _scanningPath.value = "Scanning:${downloadsDir.absolutePath}"
+                    scanDirectoryForApkFiles(downloadsDir, obsoleteApkFiles, installedPackageNames)
                 }
+            } else {
+                // On Android 10+, we can only scan our own app's directories
+                // For full APK scanning, user would need to use SAF to select folder
+                _scanningPath.value = "Scanning:/storage/emulated/0/Download..."
             }
         } catch (e: Exception) {
-            // Handle error silently
+            android.util.Log.e("ScanViewModel", "Error scanning APK files: ${e.message}")
         }
         return obsoleteApkFiles
     }
@@ -179,34 +179,33 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun scanTempFiles(context: Context): List<UnnecessaryFile> {
         val tempFiles = mutableListOf<UnnecessaryFile>()
         try {
-            // Scan app temp directories
-            val tempDir = File(context.filesDir.parent, "temp")
+            // Only scan our own app's temp directories (allowed)
+            // Path: /data/data/<package>/files/temp
+            val tempDir = File(context.filesDir, "temp")
             if (tempDir.exists()) {
+                _scanningPath.value = "Scanning:${tempDir.absolutePath}"
                 scanDirectory(tempDir, tempFiles, FileType.TEMP)
             }
 
-            // Scan common temp file locations
-            val tempExtensions = listOf(".tmp", ".temp", ".bak", ".swp", "~")
-            val externalStorage = Environment.getExternalStorageDirectory()
-            
-            // Scan Downloads for temp files
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (downloadsDir.exists() && downloadsDir.canRead()) {
-                scanDirectoryForTempFiles(downloadsDir, tempFiles, tempExtensions)
-            }
-
-            // Scan Android/data temp files
-            val androidDataDir = File(Environment.getExternalStorageDirectory(), "Android/data")
-            if (androidDataDir.exists() && androidDataDir.canRead()) {
-                androidDataDir.listFiles()?.forEach { appDir ->
-                    val filesDir = File(appDir, "files")
-                    if (filesDir.exists() && filesDir.canRead()) {
-                        scanDirectoryForTempFiles(filesDir, tempFiles, tempExtensions)
-                    }
+            // Scan external files temp directory
+            val externalFilesDir = context.getExternalFilesDir(null)
+            if (externalFilesDir != null) {
+                val externalTempDir = File(externalFilesDir, "temp")
+                if (externalTempDir.exists()) {
+                    _scanningPath.value = "Scanning:${externalTempDir.absolutePath}"
+                    scanDirectory(externalTempDir, tempFiles, FileType.TEMP)
                 }
             }
+
+            // Scan for temp files with common extensions in our app directories
+            val tempExtensions = listOf(".tmp", ".temp", ".bak", ".swp", "~")
+            scanDirectoryForTempFiles(context.filesDir, tempFiles, tempExtensions)
+            
+            externalFilesDir?.let {
+                scanDirectoryForTempFiles(it, tempFiles, tempExtensions)
+            }
         } catch (e: Exception) {
-            // Handle error silently
+            android.util.Log.e("ScanViewModel", "Error scanning temp files: ${e.message}")
         }
         return tempFiles
     }
@@ -214,39 +213,32 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun scanLogFiles(context: Context): List<UnnecessaryFile> {
         val logFiles = mutableListOf<UnnecessaryFile>()
         try {
-            val logExtensions = listOf(".log", ".txt")
-            
-            // Scan app log directories
+            // Only scan our own app's log directories (allowed)
+            // Path: /data/data/<package>/files/logs
             val logDir = File(context.filesDir, "logs")
             if (logDir.exists()) {
+                _scanningPath.value = "Scanning:${logDir.absolutePath}"
                 scanDirectoryForLogFiles(logDir, logFiles)
             }
 
-            // Scan Android/data for log files
-            val androidDataDir = File(Environment.getExternalStorageDirectory(), "Android/data")
-            if (androidDataDir.exists() && androidDataDir.canRead()) {
-                androidDataDir.listFiles()?.forEach { appDir ->
-                    val filesDir = File(appDir, "files")
-                    if (filesDir.exists() && filesDir.canRead()) {
-                        scanDirectoryForLogFiles(filesDir, logFiles)
-                    }
+            // Scan external files log directory
+            val externalFilesDir = context.getExternalFilesDir(null)
+            if (externalFilesDir != null) {
+                val externalLogDir = File(externalFilesDir, "logs")
+                if (externalLogDir.exists()) {
+                    _scanningPath.value = "Scanning:${externalLogDir.absolutePath}"
+                    scanDirectoryForLogFiles(externalLogDir, logFiles)
                 }
             }
 
-            // Scan common log locations
-            val commonLogDirs = listOf(
-                File(Environment.getExternalStorageDirectory(), "logs"),
-                File(Environment.getExternalStorageDirectory(), "log"),
-                File(Environment.getExternalStorageDirectory(), "Android/logs")
-            )
-
-            commonLogDirs.forEach { dir ->
-                if (dir.exists() && dir.canRead()) {
-                    scanDirectoryForLogFiles(dir, logFiles)
-                }
+            // Scan for log files in our app's files directory
+            scanDirectoryForLogFiles(context.filesDir, logFiles)
+            
+            externalFilesDir?.let {
+                scanDirectoryForLogFiles(it, logFiles)
             }
         } catch (e: Exception) {
-            // Handle error silently
+            android.util.Log.e("ScanViewModel", "Error scanning log files: ${e.message}")
         }
         return logFiles
     }

@@ -93,26 +93,24 @@ fun RamProcessScreen(navController: NavController) {
             }
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(Color.White)
-        ) {
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (ramInfo != null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp)
-                ) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (ramInfo != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .background(Color.White)
+                    .verticalScroll(rememberScrollState())
+                    .padding(24.dp)
+            ) {
                     // RAM Usage Display - Centered
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -199,8 +197,10 @@ fun RamProcessScreen(navController: NavController) {
                             }
                         }
                     }
+                    
+                    // Add bottom padding to prevent content from being cut off by button
+                    Spacer(modifier = Modifier.height(100.dp))
                 }
-            }
         }
     }
 }

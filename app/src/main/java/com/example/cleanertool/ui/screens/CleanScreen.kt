@@ -29,9 +29,21 @@ fun CleanScreen(navController: NavController) {
     val unnecessaryFiles by viewModel.unnecessaryFiles.collectAsState()
     val totalSize by viewModel.totalSize.collectAsState()
     val filesByCategory by viewModel.filesByCategory.collectAsState()
+    val savedSelectedCategories by viewModel.selectedCategories.collectAsState()
     
+    // Use saved categories from ViewModel, or default to all if empty
     var selectedCategories by remember {
-        mutableStateOf(setOf(FileType.JUNK, FileType.OBSOLETE_APK, FileType.TEMP, FileType.LOG))
+        mutableStateOf(
+            if (savedSelectedCategories.isNotEmpty()) savedSelectedCategories 
+            else setOf(FileType.JUNK, FileType.OBSOLETE_APK, FileType.TEMP, FileType.LOG)
+        )
+    }
+    
+    // Update when ViewModel categories change
+    LaunchedEffect(savedSelectedCategories) {
+        if (savedSelectedCategories.isNotEmpty()) {
+            selectedCategories = savedSelectedCategories
+        }
     }
     
     var isCleaning by remember { mutableStateOf(false) }
