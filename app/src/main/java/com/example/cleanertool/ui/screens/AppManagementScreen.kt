@@ -2,16 +2,23 @@ package com.example.cleanertool.ui.screens
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -38,12 +45,21 @@ fun AppManagementScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("App Management") },
+                title = {
+                    Text(
+                        "App Manager",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF795548)
+                )
             )
         }
     ) { paddingValues ->
@@ -51,6 +67,7 @@ fun AppManagementScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .background(Color(0xFFF5F5F5))
         ) {
             // Search Bar
             OutlinedTextField(
@@ -258,7 +275,31 @@ fun AppActionsMenu(
         },
         confirmButton = {
             Column {
-                Button(
+                if (!app.isSystemApp) {
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_DELETE).apply {
+                                    data = Uri.parse("package:${app.packageName}")
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // Handle error
+                            }
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFD32F2F)
+                        )
+                    ) {
+                        Icon(Icons.Default.Delete, "Uninstall")
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Uninstall App")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                OutlinedButton(
                     onClick = {
                         try {
                             val intent = packageManager.getLaunchIntentForPackage(app.packageName)
@@ -280,8 +321,8 @@ fun AppActionsMenu(
                 OutlinedButton(
                     onClick = {
                         try {
-                            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = android.net.Uri.fromParts("package", app.packageName, null)
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", app.packageName, null)
                             }
                             context.startActivity(intent)
                         } catch (e: Exception) {

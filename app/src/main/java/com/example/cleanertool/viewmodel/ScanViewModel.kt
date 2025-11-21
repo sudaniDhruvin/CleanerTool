@@ -43,6 +43,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private val _scanningPath = MutableStateFlow<String>("")
+    val scanningPath: StateFlow<String> = _scanningPath.asStateFlow()
+
+    private val _currentScanningCategory = MutableStateFlow<FileType?>(null)
+    val currentScanningCategory: StateFlow<FileType?> = _currentScanningCategory.asStateFlow()
+
+    private val _filesByCategory = MutableStateFlow<Map<FileType, List<UnnecessaryFile>>>(emptyMap())
+    val filesByCategory: StateFlow<Map<FileType, List<UnnecessaryFile>>> = _filesByCategory.asStateFlow()
+
     fun scanDevice(context: Context) {
         viewModelScope.launch {
             _isScanning.value = true
@@ -52,31 +61,48 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             _totalSize.value = 0L
 
             try {
-                val files = mutableListOf<UnnecessaryFile>()
+                val filesByType = mutableMapOf<FileType, MutableList<UnnecessaryFile>>()
+                filesByType[FileType.JUNK] = mutableListOf()
+                filesByType[FileType.OBSOLETE_APK] = mutableListOf()
+                filesByType[FileType.TEMP] = mutableListOf()
+                filesByType[FileType.LOG] = mutableListOf()
 
                 // Step 1: Scan junk files (0-25%)
                 _scanProgress.value = 0
+                _currentScanningCategory.value = FileType.JUNK
+                _scanningPath.value = "Scanning:/storage/emulated/0/Android/data/com.miu..."
                 val junkFiles = withContext(Dispatchers.IO) { scanJunkFiles(context) }
-                files.addAll(junkFiles)
+                filesByType[FileType.JUNK]?.addAll(junkFiles)
                 _scanProgress.value = 25
 
                 // Step 2: Scan obsolete APK files (25-50%)
+                _currentScanningCategory.value = FileType.OBSOLETE_APK
+                _scanningPath.value = "Scanning:/storage/emulated/0/Download..."
                 val obsoleteApkFiles = withContext(Dispatchers.IO) { scanObsoleteApkFiles(context) }
-                files.addAll(obsoleteApkFiles)
+                filesByType[FileType.OBSOLETE_APK]?.addAll(obsoleteApkFiles)
                 _scanProgress.value = 50
 
                 // Step 3: Scan temp files (50-75%)
+                _currentScanningCategory.value = FileType.TEMP
+                _scanningPath.value = "Scanning:/storage/emulated/0/Android/data..."
                 val tempFiles = withContext(Dispatchers.IO) { scanTempFiles(context) }
-                files.addAll(tempFiles)
+                filesByType[FileType.TEMP]?.addAll(tempFiles)
                 _scanProgress.value = 75
 
                 // Step 4: Scan log files (75-100%)
+                _currentScanningCategory.value = FileType.LOG
+                _scanningPath.value = "Scanning:/storage/emulated/0/Android/logs..."
                 val logFiles = withContext(Dispatchers.IO) { scanLogFiles(context) }
-                files.addAll(logFiles)
+                filesByType[FileType.LOG]?.addAll(logFiles)
                 _scanProgress.value = 100
+                _scanningPath.value = ""
+                _currentScanningCategory.value = null
 
-                _unnecessaryFiles.value = files
-                _totalSize.value = files.sumOf { it.size }
+                // Combine all files
+                val allFiles = filesByType.values.flatten()
+                _unnecessaryFiles.value = allFiles
+                _totalSize.value = allFiles.sumOf { it.size }
+                _filesByCategory.value = filesByType.mapValues { it.value.toList() }
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to scan device"
             } finally {
@@ -369,9 +395,17 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun cleanFiles(context: Context, onProgress: (Int) -> Unit = {}) {
+    fun cleanFiles(
+        context: Context,
+        selectedCategories: Set<FileType>,
+        onProgress: (Int) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            val filesToDelete = _unnecessaryFiles.value.toList() // Create a copy
+            // Filter files by selected categories
+            val filesToDelete = _unnecessaryFiles.value
+                .filter { selectedCategories.contains(it.type) }
+                .toList()
+            
             if (filesToDelete.isEmpty()) {
                 onProgress(100)
                 return@launch
@@ -379,20 +413,30 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
             var deletedCount = 0
             var deletedSize = 0L
+            var failedCount = 0
 
             withContext(Dispatchers.IO) {
                 filesToDelete.forEachIndexed { index, file ->
                     try {
                         val fileObj = File(file.path)
+                        // Validate file exists and is writable before deletion
                         if (fileObj.exists() && fileObj.canWrite()) {
                             val size = fileObj.length()
                             if (fileObj.delete()) {
                                 deletedCount++
                                 deletedSize += size
+                            } else {
+                                failedCount++
                             }
+                        } else {
+                            failedCount++
                         }
+                    } catch (e: SecurityException) {
+                        // Permission denied
+                        failedCount++
                     } catch (e: Exception) {
-                        // Skip files that can't be deleted
+                        // Other errors
+                        failedCount++
                     }
                     
                     // Update progress
@@ -402,11 +446,30 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // Update the list to remove deleted files
-            _unnecessaryFiles.value = _unnecessaryFiles.value.filter { 
-                !File(it.path).exists() 
+            val remainingFiles = _unnecessaryFiles.value.filter { file ->
+                val fileObj = File(file.path)
+                !fileObj.exists() || !selectedCategories.contains(file.type)
             }
-            _totalSize.value = _unnecessaryFiles.value.sumOf { it.size }
+            
+            _unnecessaryFiles.value = remainingFiles
+            _totalSize.value = remainingFiles.sumOf { it.size }
+            
+            // Update files by category
+            val updatedFilesByCategory = _filesByCategory.value.toMutableMap()
+            selectedCategories.forEach { category ->
+                updatedFilesByCategory[category] = updatedFilesByCategory[category]
+                    ?.filter { !File(it.path).exists() } ?: emptyList()
+            }
+            _filesByCategory.value = updatedFilesByCategory
         }
+    }
+
+    fun getFilesByCategory(category: FileType): List<UnnecessaryFile> {
+        return _filesByCategory.value[category] ?: emptyList()
+    }
+
+    fun getTotalSizeByCategory(category: FileType): Long {
+        return getFilesByCategory(category).sumOf { it.size }
     }
 }
 
