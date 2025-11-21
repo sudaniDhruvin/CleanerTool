@@ -205,5 +205,39 @@ object NotificationManager {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
         notificationManager.notify(5001, notification)
     }
+
+    fun showStorageFullNotification(context: Context, freeSpace: Long, usagePercent: Int) {
+        val freeSpaceGB = freeSpace / (1024.0 * 1024.0 * 1024.0)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setContentTitle("Storage Almost Full")
+            .setContentText("Storage is ${usagePercent}% full. Only ${String.format("%.2f", freeSpaceGB)}GB free.")
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText("Your device storage is ${usagePercent}% full with only ${String.format("%.2f", freeSpaceGB)}GB free space remaining. Consider cleaning junk files to free up space."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(getPendingIntent(context))
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
+        notificationManager.notify(6001, notification)
+    }
+
+    fun showPhotoCompressionCompleteNotification(context: Context, imagesCompressed: Int, spaceSaved: Long) {
+        val spaceSavedMB = spaceSaved / (1024.0 * 1024.0)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+            .setSmallIcon(android.R.drawable.ic_menu_gallery)
+            .setContentTitle("Photo Compression Complete")
+            .setContentText("$imagesCompressed image(s) compressed. Saved ${String.format("%.2f", spaceSavedMB)}MB")
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText("Successfully compressed $imagesCompressed image(s) and saved ${String.format("%.2f", spaceSavedMB)}MB of storage space."))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(getPendingIntent(context))
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
+        notificationManager.notify(7001, notification)
+    }
 }
 

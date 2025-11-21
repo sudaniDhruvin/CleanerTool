@@ -14,6 +14,7 @@ import com.example.cleanertool.R
 import com.example.cleanertool.utils.NotificationManager
 import com.example.cleanertool.utils.SettingsPreferencesManager
 import com.example.cleanertool.utils.RamUtils
+import com.example.cleanertool.utils.StorageUtils
 import kotlinx.coroutines.*
 
 class MonitoringService : Service() {
@@ -77,10 +78,43 @@ class MonitoringService : Service() {
 
     private fun startMonitoring() {
         serviceScope.launch {
+            // Track last notification times to avoid spam
+            var lastStorageNotification = 0L
+            var lastRamNotification = 0L
+            var lastJunkNotification = 0L
+            var lastBatteryCheck = 0L
+            
             while (isMonitoring) {
-                checkJunkFiles()
-                checkRamUsage()
-                delay(5 * 60 * 1000) // Check every 5 minutes
+                val currentTime = System.currentTimeMillis()
+                
+                // Check storage every 10 minutes
+                if (currentTime - lastStorageNotification > 10 * 60 * 1000) {
+                    checkStorage()
+                    lastStorageNotification = currentTime
+                }
+                
+                // Check RAM every 5 minutes
+                if (currentTime - lastRamNotification > 5 * 60 * 1000) {
+                    checkRamUsage()
+                    lastRamNotification = currentTime
+                }
+                
+                // Check junk files every 15 minutes
+                if (currentTime - lastJunkNotification > 15 * 60 * 1000) {
+                    checkJunkFiles()
+                    lastJunkNotification = currentTime
+                }
+                
+                // Check battery status every 5 minutes (backup to receiver)
+                if (currentTime - lastBatteryCheck > 5 * 60 * 1000) {
+                    checkBatteryStatus()
+                    lastBatteryCheck = currentTime
+                }
+                
+                // Check photo compression status every 2 minutes
+                checkPhotoCompressionStatus()
+                
+                delay(2 * 60 * 1000) // Check every 2 minutes
             }
         }
     }
@@ -119,6 +153,97 @@ class MonitoringService : Service() {
                     this@MonitoringService,
                     ramInfo.ramUsagePercentage
                 )
+            }
+        } catch (e: Exception) {
+            // Handle error silently
+        }
+    }
+
+    private suspend fun checkStorage() = withContext(Dispatchers.IO) {
+        try {
+            val storageInfo = StorageUtils.getStorageInfo(this@MonitoringService)
+            
+            // Show notification if storage is above 85% full
+            if (storageInfo.usagePercentage >= 85) {
+                NotificationManager.showStorageFullNotification(
+                    this@MonitoringService,
+                    storageInfo.freeSpace,
+                    storageInfo.usagePercentage
+                )
+            }
+        } catch (e: Exception) {
+            // Handle error silently
+        }
+    }
+
+    private suspend fun checkBatteryStatus() = withContext(Dispatchers.IO) {
+        val settingsPrefs = SettingsPreferencesManager(this@MonitoringService)
+        
+        try {
+            val batteryIntent = registerReceiver(
+                null,
+                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+            )
+            
+            batteryIntent?.let {
+                val level = it.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+                val scale = it.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+                val batteryLevel = (level * 100 / scale.toFloat()).toInt()
+                
+                val status = it.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+                val isFull = status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                
+                // Battery full notification (backup check)
+                if (settingsPrefs.getChargingReminder() && isFull && batteryLevel >= 100) {
+                    NotificationManager.showBatteryFullNotification(this@MonitoringService)
+                }
+                
+                // Low battery notification (backup check)
+                if (settingsPrefs.getLowBatteryReminder() && batteryLevel <= 20) {
+                    NotificationManager.showLowBatteryNotification(this@MonitoringService, batteryLevel)
+                }
+            }
+        } catch (e: Exception) {
+            // Handle error silently
+        }
+    }
+
+    private suspend fun checkPhotoCompressionStatus() = withContext(Dispatchers.IO) {
+        try {
+            val prefs = getSharedPreferences("compressed_images", Context.MODE_PRIVATE)
+            val compressedUris = prefs.getStringSet("compressed_uris", emptySet()) ?: emptySet()
+            val lastNotifiedCount = prefs.getInt("last_notified_compressed_count", 0)
+            
+            // If new images were compressed, show notification
+            if (compressedUris.size > lastNotifiedCount) {
+                val newCompressedCount = compressedUris.size - lastNotifiedCount
+                
+                // Calculate space saved (estimate)
+                var totalSpaceSaved = 0L
+                compressedUris.forEach { uriString ->
+                    try {
+                        val uri = android.net.Uri.parse(uriString)
+                        val key = "size_${uri.toString().hashCode()}"
+                        val originalSize = prefs.getLong("${key}_original", 0L)
+                        val compressedSize = prefs.getLong("${key}_compressed", 0L)
+                        if (originalSize > 0 && compressedSize > 0) {
+                            totalSpaceSaved += (originalSize - compressedSize)
+                        }
+                    } catch (e: Exception) {
+                        // Skip this entry
+                    }
+                }
+                
+                if (newCompressedCount > 0 && totalSpaceSaved > 0) {
+                    NotificationManager.showPhotoCompressionCompleteNotification(
+                        this@MonitoringService,
+                        newCompressedCount,
+                        totalSpaceSaved
+                    )
+                    
+                    // Update last notified count
+                    prefs.edit().putInt("last_notified_compressed_count", compressedUris.size).apply()
+                }
             }
         } catch (e: Exception) {
             // Handle error silently
