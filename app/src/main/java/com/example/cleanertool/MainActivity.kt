@@ -1,16 +1,21 @@
 package com.example.cleanertool
 
+import android.Manifest
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
 import com.example.cleanertool.navigation.NavGraph
 import com.example.cleanertool.receivers.BatteryBroadcastReceiver
@@ -23,24 +28,48 @@ class MainActivity : ComponentActivity() {
     private lateinit var batteryReceiver: BatteryBroadcastReceiver
     private lateinit var uninstallReceiver: UninstallReceiver
 
+    // Permission launcher for storage permissions
+    private val storagePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            Log.i("MainActivity", "Storage permissions granted")
+        } else {
+            Log.w("MainActivity", "Storage permissions denied: $permissions")
+            // You can show a dialog explaining why permissions are needed
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        // Request storage permissions
+        requestStoragePermissions()
+
         // Create notification channels
         NotificationManager.createNotificationChannels(this)
-        
+
         // Register battery receiver
         batteryReceiver = BatteryBroadcastReceiver()
         val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        registerReceiver(batteryReceiver, batteryFilter)
-        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(batteryReceiver, batteryFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(batteryReceiver, batteryFilter)
+        }
+
         // Register uninstall receiver
         uninstallReceiver = UninstallReceiver()
         val uninstallFilter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply {
             addDataScheme("package")
         }
-        registerReceiver(uninstallReceiver, uninstallFilter)
-        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(uninstallReceiver, uninstallFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(uninstallReceiver, uninstallFilter)
+        }
+
         // Start monitoring service
         val serviceIntent = Intent(this, MonitoringService::class.java).apply {
             action = MonitoringService.ACTION_START_MONITORING
@@ -50,7 +79,7 @@ class MainActivity : ComponentActivity() {
         } else {
             startService(serviceIntent)
         }
-        
+
         enableEdgeToEdge()
         setContent {
             CleanerToolTheme {
@@ -65,19 +94,91 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestStoragePermissions() {
+        val permissions = when {
+            // Android 13+ (API 33+) - Granular media permissions
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                    Manifest.permission.READ_MEDIA_AUDIO
+                )
+            }
+            // Android 10-12 (API 29-32) - READ_EXTERNAL_STORAGE
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            // Android 9 and below (API 28-) - Both permissions
+            else -> {
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            }
+        }
+
+        // Check which permissions are not yet granted
+        val notGrantedPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (notGrantedPermissions.isNotEmpty()) {
+            Log.i("MainActivity", "Requesting permissions: ${notGrantedPermissions.joinToString()}")
+            storagePermissionLauncher.launch(notGrantedPermissions.toTypedArray())
+        } else {
+            Log.i("MainActivity", "All storage permissions already granted")
+        }
+    }
+
+    // Helper function to check if storage permissions are granted
+    fun hasStoragePermissions(): Boolean {
+        return when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_MEDIA_IMAGES
+                ) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.READ_MEDIA_VIDEO
+                        ) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.READ_MEDIA_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+            else -> {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE
+                        ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         try {
             unregisterReceiver(batteryReceiver)
         } catch (e: Exception) {
-            // Receiver might not be registered
+            Log.w("MainActivity", "Failed to unregister battery receiver: ${e.message}")
         }
         try {
             unregisterReceiver(uninstallReceiver)
         } catch (e: Exception) {
-            // Receiver might not be registered
+            Log.w("MainActivity", "Failed to unregister uninstall receiver: ${e.message}")
         }
-        
+
         // Stop monitoring service
         val serviceIntent = Intent(this, MonitoringService::class.java).apply {
             action = MonitoringService.ACTION_STOP_MONITORING
