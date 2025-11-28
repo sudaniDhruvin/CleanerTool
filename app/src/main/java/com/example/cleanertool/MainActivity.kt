@@ -4,8 +4,11 @@ import android.Manifest
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -39,6 +42,12 @@ class MainActivity : ComponentActivity() {
             Log.w("MainActivity", "Storage permissions denied: $permissions")
             // You can show a dialog explaining why permissions are needed
         }
+    }
+
+    private val manageStoragePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        Log.i("MainActivity", "Returned from all-files access screen")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -128,24 +137,32 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.i("MainActivity", "All storage permissions already granted")
         }
+
+        requestAllFilesAccessPermissionIfNeeded()
     }
 
     // Helper function to check if storage permissions are granted
     fun hasStoragePermissions(): Boolean {
         return when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.READ_MEDIA_IMAGES
-                ) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.READ_MEDIA_VIDEO
-                        ) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(
-                            this,
-                            Manifest.permission.READ_MEDIA_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
+                Environment.isExternalStorageManager() ||
+                        (
+                                ContextCompat.checkSelfPermission(
+                                    this,
+                                    Manifest.permission.READ_MEDIA_IMAGES
+                                ) == PackageManager.PERMISSION_GRANTED &&
+                                        ContextCompat.checkSelfPermission(
+                                            this,
+                                            Manifest.permission.READ_MEDIA_VIDEO
+                                        ) == PackageManager.PERMISSION_GRANTED &&
+                                        ContextCompat.checkSelfPermission(
+                                            this,
+                                            Manifest.permission.READ_MEDIA_AUDIO
+                                        ) == PackageManager.PERMISSION_GRANTED
+                                )
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                Environment.isExternalStorageManager()
             }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
                 ContextCompat.checkSelfPermission(
@@ -162,6 +179,21 @@ class MainActivity : ComponentActivity() {
                             this,
                             Manifest.permission.WRITE_EXTERNAL_STORAGE
                         ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+    }
+
+    private fun requestAllFilesAccessPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                manageStoragePermissionLauncher.launch(intent)
+            } catch (e: Exception) {
+                Log.w("MainActivity", "Failed to launch app-specific all files intent: ${e.message}")
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                manageStoragePermissionLauncher.launch(intent)
             }
         }
     }

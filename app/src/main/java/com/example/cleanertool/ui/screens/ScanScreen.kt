@@ -1,6 +1,5 @@
 package com.example.cleanertool.ui.screens
 
-import android.content.Context
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -8,7 +7,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,11 +21,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.cleanertool.viewmodel.FileType
 import com.example.cleanertool.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
+
+private val JunkCategoryTypes = setOf(FileType.JUNK, FileType.CACHE)
+private val DefaultSelectedTypes: Set<FileType> = FileType.values().toSet()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,9 +44,14 @@ fun ScanScreen(navController: NavController) {
     val scanningPath by viewModel.scanningPath.collectAsState()
     val currentScanningCategory by viewModel.currentScanningCategory.collectAsState()
     val filesByCategory by viewModel.filesByCategory.collectAsState()
+    val savedSelectedCategories by viewModel.selectedCategories.collectAsState()
     
-    var selectedCategories by remember {
-        mutableStateOf(setOf(FileType.JUNK))
+    var selectedCategories by remember { mutableStateOf(DefaultSelectedTypes) }
+    
+    LaunchedEffect(savedSelectedCategories) {
+        if (savedSelectedCategories.isNotEmpty()) {
+            selectedCategories = savedSelectedCategories
+        }
     }
 
     // Start scanning when screen loads
@@ -211,14 +223,14 @@ fun ScanScreen(navController: NavController) {
                     CategoryItem(
                         icon = Icons.Default.Delete,
                         title = "Junk Files",
-                        size = viewModel.getTotalSizeByCategory(FileType.JUNK),
-                        isScanning = isScanning && currentScanningCategory == FileType.JUNK,
-                        isSelected = selectedCategories.contains(FileType.JUNK),
+                        size = viewModel.getTotalSizeByCategories(JunkCategoryTypes),
+                        isScanning = isScanning && (currentScanningCategory == FileType.JUNK || currentScanningCategory == FileType.CACHE),
+                        isSelected = JunkCategoryTypes.all { selectedCategories.contains(it) },
                         onToggle = {
-                            selectedCategories = if (selectedCategories.contains(FileType.JUNK)) {
-                                selectedCategories - FileType.JUNK
+                            selectedCategories = if (JunkCategoryTypes.all { selectedCategories.contains(it) }) {
+                                selectedCategories - JunkCategoryTypes
                             } else {
-                                selectedCategories + FileType.JUNK
+                                selectedCategories + JunkCategoryTypes
                             }
                         }
                     )
@@ -272,7 +284,7 @@ fun ScanScreen(navController: NavController) {
                     )
                     
                     // Add bottom padding to prevent content from being cut off by button
-                    Spacer(modifier = Modifier.height(100.dp))
+                    Spacer(modifier = Modifier.height(120.dp))
                 }
             }
         }
@@ -352,7 +364,7 @@ fun CategoryItem(
                 )
             } else {
                 Text(
-                    text = formatSize(size),
+                    text = formatSizeInKb(size),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF2196F3),
@@ -373,11 +385,8 @@ fun CategoryItem(
     }
 }
 
-fun formatSize(bytes: Long): String {
-    return when {
-        bytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-        bytes >= 1024 * 1024 -> String.format("%.2f MB", bytes / (1024.0 * 1024.0))
-        bytes >= 1024 -> String.format("%.2f KB", bytes / 1024.0)
-        else -> "$bytes B"
-    }
+private fun formatSizeInKb(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val kb = bytes / 1024.0
+    return String.format("%.2f KB", kb)
 }

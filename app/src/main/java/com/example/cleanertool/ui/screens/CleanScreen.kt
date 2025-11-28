@@ -21,6 +21,9 @@ import com.example.cleanertool.viewmodel.FileType
 import com.example.cleanertool.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
 
+private val JunkCategoryTypes = setOf(FileType.JUNK, FileType.CACHE)
+private val DefaultSelectedTypes: Set<FileType> = FileType.values().toSet()
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CleanScreen(navController: NavController) {
@@ -34,8 +37,8 @@ fun CleanScreen(navController: NavController) {
     // Use saved categories from ViewModel, or default to all if empty
     var selectedCategories by remember {
         mutableStateOf(
-            if (savedSelectedCategories.isNotEmpty()) savedSelectedCategories 
-            else setOf(FileType.JUNK, FileType.OBSOLETE_APK, FileType.TEMP, FileType.LOG)
+            if (savedSelectedCategories.isNotEmpty()) savedSelectedCategories
+            else DefaultSelectedTypes
         )
     }
     
@@ -248,20 +251,21 @@ fun CleanScreen(navController: NavController) {
                     
                     // Show selected categories with sizes
                     val categories = listOf(
-                        FileType.JUNK to "Junk Files",
-                        FileType.OBSOLETE_APK to "Obsolete APK files",
-                        FileType.TEMP to "Temp Files",
-                        FileType.LOG to "Log Files"
+                        "Junk Files" to JunkCategoryTypes,
+                        "Obsolete APK files" to setOf(FileType.OBSOLETE_APK),
+                        "Temp Files" to setOf(FileType.TEMP),
+                        "Log Files" to setOf(FileType.LOG)
                     )
                     
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        categories.forEach { (type, title) ->
-                            if (selectedCategories.contains(type)) {
-                                val categorySize = viewModel.getTotalSizeByCategory(type)
-                                val categoryFiles = viewModel.getFilesByCategory(type)
+                        categories.forEach { (title, types) ->
+                            val isSelected = types.all { selectedCategories.contains(it) }
+                            if (isSelected) {
+                                val categorySize = viewModel.getTotalSizeByCategories(types)
+                                val categoryFiles = types.flatMap { viewModel.getFilesByCategory(it) }
                                 
                                 if (categorySize > 0) {
                                     Row(
@@ -276,7 +280,7 @@ fun CleanScreen(navController: NavController) {
                                             Checkbox(
                                                 checked = true,
                                                 onCheckedChange = {
-                                                    selectedCategories = selectedCategories - type
+                                                    selectedCategories = selectedCategories - types
                                                 },
                                                 enabled = !isCleaning
                                             )

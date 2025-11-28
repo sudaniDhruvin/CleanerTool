@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.cleanertool.utils.storage.DirectoryScanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -92,43 +93,40 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 val allJunkFiles = mutableListOf<UnnecessaryFile>()
 
                 withContext(Dispatchers.IO) {
-                    // 1. Scan ALL files via MediaStore.Files (most comprehensive)
-                    _scanProgress.value = 10
-                    _scanningPath.value = "Scanning all files..."
-                    scanAllFilesViaMediaStore(context, allJunkFiles)
+                    runScanStage(FileType.JUNK, 10, "Scanning all files...") {
+                        scanAllFilesViaMediaStore(context, allJunkFiles)
+                    }
 
-                    // 2. Scan Downloads specifically
-                    _scanProgress.value = 30
-                    _scanningPath.value = "Scanning Downloads..."
-                    scanDownloadsViaMediaStore(context, allJunkFiles)
+                    runScanStage(FileType.JUNK, 30, "Scanning Downloads...") {
+                        scanDownloadsViaMediaStore(context, allJunkFiles)
+                    }
 
-                    // 3. Scan Images for thumbnails
-                    _scanProgress.value = 45
-                    _scanningPath.value = "Scanning Images..."
-                    scanImagesViaMediaStore(context, allJunkFiles)
+                    runScanStage(FileType.CACHE, 45, "Scanning Images...") {
+                        scanImagesViaMediaStore(context, allJunkFiles)
+                    }
 
-                    // 4. Scan Videos
-                    _scanProgress.value = 55
-                    _scanningPath.value = "Scanning Videos..."
-                    scanVideosViaMediaStore(context, allJunkFiles)
+                    runScanStage(FileType.TEMP, 55, "Scanning Videos...") {
+                        scanVideosViaMediaStore(context, allJunkFiles)
+                    }
 
-                    // 5. Scan Audio
-                    _scanProgress.value = 65
-                    _scanningPath.value = "Scanning Audio..."
-                    scanAudioViaMediaStore(context, allJunkFiles)
+                    runScanStage(FileType.TEMP, 65, "Scanning Audio...") {
+                        scanAudioViaMediaStore(context, allJunkFiles)
+                    }
 
-                    // 6. Scan app-specific storage (always accessible)
-                    _scanProgress.value = 75
-                    _scanningPath.value = "Scanning App Data..."
-                    scanAppStorage(context, allJunkFiles)
+                    runScanStage(FileType.TEMP, 80, "Scanning App Data...") {
+                        scanAppStorage(context, allJunkFiles)
+                    }
 
-                    // 7. Try accessible folders
-                    _scanProgress.value = 90
-                    _scanningPath.value = "Scanning accessible folders..."
-                    scanAccessibleFolders(context, allJunkFiles)
+                    runScanStage(FileType.JUNK, 90, "Scanning accessible folders...") {
+                        scanAccessibleFolders(context, allJunkFiles)
+                    }
 
-                    _scanProgress.value = 100
+                    runScanStage(FileType.JUNK, 100, "Scanning storage tree...") {
+                        scanExternalStorageTree(context, allJunkFiles)
+                    }
                 }
+
+                _scanProgress.value = 100
 
                 // Remove duplicates by path
                 val uniqueFiles = allJunkFiles.distinctBy { it.path }
@@ -170,6 +168,22 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 _isScanning.value = false
             }
         }
+    }
+
+    private suspend fun runScanStage(
+        category: FileType?,
+        progress: Int,
+        statusMessage: String,
+        block: suspend () -> Unit
+    ) {
+        _currentScanningCategory.value = category
+        _scanningPath.value = statusMessage
+        try {
+            block()
+        } catch (e: Exception) {
+            Log.e("ScanViewModel", "Stage failed: $statusMessage -> ${e.message}")
+        }
+        _scanProgress.value = progress
     }
 
     // --------------------------
@@ -702,8 +716,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --------------------------
-// Accessible folders like OBB
-// --------------------------
+    // Accessible folders like OBB
+    // --------------------------
     private fun scanAccessibleFolders(context: Context, fileList: MutableList<UnnecessaryFile>) {
         // Try OBB directory (games store large temporary data)
         try {
@@ -719,8 +733,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --------------------------
-// Recursive directory scanner (with max depth)
-// --------------------------
+    // Recursive directory scanner (with max depth)
+    // --------------------------
     private fun scanDirectoryRecursive(
         dir: File,
         fileList: MutableList<UnnecessaryFile>,
@@ -759,6 +773,47 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private suspend fun scanExternalStorageTree(
+        context: Context,
+        fileList: MutableList<UnnecessaryFile>
+    ) {
+        @Suppress("DEPRECATION")
+        val root = Environment.getExternalStorageDirectory()
+        if (!root.exists()) {
+            Log.d("ScanViewModel", "External storage root missing")
+            return
+        }
+
+        val trashDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "Trash")
+
+        DirectoryScanner.scan(
+            root = root,
+            showHidden = false,
+            skipDir = { dir ->
+                !dir.canRead() ||
+                        dir.absolutePath.startsWith(trashDir.absolutePath)
+            },
+            onLockedDir = { locked ->
+                Log.d("ScanViewModel", "Skipping protected dir: ${locked.absolutePath}")
+            }
+        ) { file ->
+            val type = categorizeFile(file.name) ?: return@scan
+            if (file.length() <= 0) return@scan
+            val path = file.absolutePath
+
+            if (!fileList.any { it.path == path }) {
+                fileList.add(
+                    UnnecessaryFile(
+                        path = path,
+                        name = file.name,
+                        size = file.length(),
+                        type = type
+                    )
+                )
+            }
+        }
+    }
+
     // --------------------------
 // Human-friendly file size
 // --------------------------
@@ -783,65 +838,104 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         selectedCategories: Set<FileType>,
         onProgress: (Int) -> Unit = {}
     ) {
+        val filesToDelete = _unnecessaryFiles.value
+            .filter { selectedCategories.contains(it.type) }
+        deleteSpecificFiles(context, filesToDelete, onProgress)
+    }
+
+    fun deleteSpecificFiles(
+        context: Context,
+        files: List<UnnecessaryFile>,
+        onProgress: (Int) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            val filesToDelete = _unnecessaryFiles.value
-                .filter { selectedCategories.contains(it.type) }
-
-            if (filesToDelete.isEmpty()) {
-                onProgress(100)
-                return@launch
-            }
-
-            var deletedCount = 0
-            var deletedSize = 0L
-            var failedCount = 0
-
-            val deletedPaths = mutableSetOf<String>()
-            val deletedUris = mutableSetOf<Uri>()
-
-            withContext(Dispatchers.IO) {
-                filesToDelete.forEachIndexed { index, file ->
-                    try {
-                        val deleted = if (file.uri != null) {
-                            try {
-                                val rows = context.contentResolver.delete(file.uri, null, null)
-                                rows > 0
-                            } catch (se: SecurityException) {
-                                false
-                            }
-                        } else {
-                            val fileObj = File(file.path)
-                            if (fileObj.exists()) fileObj.delete() else false
-                        }
-
-                        if (deleted) {
-                            deletedCount++
-                            deletedSize += file.size
-                            deletedPaths.add(file.path)
-                            file.uri?.let { deletedUris.add(it) }
-                        } else {
-                            failedCount++
-                        }
-                    } catch (_: Exception) {
-                        failedCount++
-                    }
-
-                    val progress = ((index + 1) * 100) / filesToDelete.size
-                    onProgress(progress)
-                }
-            }
-
-            // Remove successfully deleted items
-            val remainingFiles = _unnecessaryFiles.value.filter { file ->
-                if (file.uri != null) !deletedUris.contains(file.uri)
-                else !deletedPaths.contains(file.path) && File(file.path).exists()
-            }
-
-            _unnecessaryFiles.value = remainingFiles
-            _totalSize.value = remainingFiles.sumOf { it.size }
-            _filesByCategory.value = remainingFiles.groupBy { it.type }
+            performDeletion(context, files, onProgress)
         }
     }
+
+    private suspend fun performDeletion(
+        context: Context,
+        filesToDelete: List<UnnecessaryFile>,
+        onProgress: (Int) -> Unit
+    ) {
+        if (filesToDelete.isEmpty()) {
+            onProgress(100)
+            return
+        }
+
+        var deletedCount = 0
+        var deletedSize = 0L
+        var failedCount = 0
+
+        val deletedPaths = mutableSetOf<String>()
+        val deletedUris = mutableSetOf<Uri>()
+
+        withContext(Dispatchers.IO) {
+            filesToDelete.forEachIndexed { index, file ->
+                try {
+                    val deleted = if (file.uri != null) {
+                        try {
+                            val rows = context.contentResolver.delete(file.uri, null, null)
+                            rows > 0
+                        } catch (se: SecurityException) {
+                            false
+                        }
+                    } else {
+                        val fileObj = File(file.path)
+                        if (fileObj.exists()) fileObj.delete() else false
+                    }
+
+                    if (deleted) {
+                        deletedCount++
+                        deletedSize += file.size
+                        deletedPaths.add(file.path)
+                        file.uri?.let { deletedUris.add(it) }
+                    } else {
+                        failedCount++
+                    }
+                } catch (_: Exception) {
+                    failedCount++
+                }
+
+                val progress = ((index + 1) * 100) / filesToDelete.size
+                onProgress(progress)
+            }
+        }
+
+        val remainingFiles = _unnecessaryFiles.value.filter { file ->
+            if (file.uri != null) !deletedUris.contains(file.uri)
+            else !deletedPaths.contains(file.path) && File(file.path).exists()
+        }
+
+        _unnecessaryFiles.value = remainingFiles
+        _totalSize.value = remainingFiles.sumOf { it.size }
+        _filesByCategory.value = remainingFiles.groupBy { it.type }
+    }
+
+    fun getDuplicateGroups(): List<List<UnnecessaryFile>> {
+        return _unnecessaryFiles.value
+            .groupBy { "${it.name.lowercase()}_${it.size}" }
+            .values
+            .filter { it.size > 1 }
+            .sortedByDescending { group -> group.sumOf { file -> file.size } }
+    }
+
+    fun cleanDuplicateGroups(
+        context: Context,
+        onProgress: (Int) -> Unit = {}
+    ) {
+        val duplicates = getDuplicateGroups()
+        val filesToDelete = duplicates.flatMap { group -> group.drop(1) }
+        deleteSpecificFiles(context, filesToDelete, onProgress)
+    }
+
+    fun getLargeFiles(minSizeBytes: Long = 50L * 1024L * 1024L): List<UnnecessaryFile> {
+        return _unnecessaryFiles.value
+            .filter { it.size >= minSizeBytes }
+            .sortedByDescending { it.size }
+    }
+
+    fun getApkFiles(): List<UnnecessaryFile> = getFilesByCategory(FileType.OBSOLETE_APK)
 
     // --------------------------
 // Safe column index getter
@@ -860,5 +954,9 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getTotalSizeByCategory(category: FileType): Long {
         return getFilesByCategory(category).sumOf { it.size }
+    }
+
+    fun getTotalSizeByCategories(categories: Set<FileType>): Long {
+        return categories.sumOf { getTotalSizeByCategory(it) }
     }
 }

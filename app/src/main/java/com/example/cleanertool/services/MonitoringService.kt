@@ -1,23 +1,23 @@
 package com.example.cleanertool.services
 
-import android.app.Service
+import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.os.IBinder
-import android.os.Build
-import android.app.ActivityManager
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager as AndroidNotificationManager
+import android.content.IntentFilter
+import android.os.*
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
-import com.example.cleanertool.R
+import com.example.cleanertool.ui.screens.AfterCallDialogActivity
 import com.example.cleanertool.utils.NotificationManager
-import com.example.cleanertool.utils.SettingsPreferencesManager
+import com.example.cleanertool.utils.OverlayPermission
 import com.example.cleanertool.utils.RamUtils
+import com.example.cleanertool.utils.SettingsPreferencesManager
 import com.example.cleanertool.utils.StorageUtils
 import kotlinx.coroutines.*
 
 class MonitoringService : Service() {
+
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var isMonitoring = false
 
@@ -28,10 +28,39 @@ class MonitoringService : Service() {
         const val ACTION_STOP_MONITORING = "com.example.cleanertool.STOP_MONITORING"
     }
 
+    private lateinit var telephonyManager: TelephonyManager
+    private lateinit var callListener: PhoneStateListener
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+
+        // Initialize telephony manager
+        telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+
+        // Setup call listener
+        callListener = object : PhoneStateListener() {
+            private var lastState = TelephonyManager.CALL_STATE_IDLE
+            private var savedNumber: String? = null
+
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                super.onCallStateChanged(state, phoneNumber)
+                when (state) {
+                    TelephonyManager.CALL_STATE_RINGING -> savedNumber = phoneNumber
+                    TelephonyManager.CALL_STATE_IDLE -> {
+                        if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            // Call ended
+                            showAfterCallDialog(savedNumber)
+                        }
+                    }
+                }
+                lastState = state
+            }
+        }
+
+        // Start listening for call state changes
+        telephonyManager.listen(callListener, PhoneStateListener.LISTEN_CALL_STATE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -55,17 +84,19 @@ class MonitoringService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val channel = android.app.NotificationChannel(
                 CHANNEL_ID,
                 "Monitoring Service",
-                AndroidNotificationManager.IMPORTANCE_LOW
+                android.app.NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Background monitoring for device optimization"
             }
-            val notificationManager = getSystemService(AndroidNotificationManager::class.java)
+            val notificationManager =
+                getSystemService(android.app.NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
     }
+
 
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -78,191 +109,130 @@ class MonitoringService : Service() {
 
     private fun startMonitoring() {
         serviceScope.launch {
-            // Track last notification times to avoid spam
             var lastStorageNotification = 0L
             var lastRamNotification = 0L
             var lastJunkNotification = 0L
             var lastBatteryCheck = 0L
-            
+
             while (isMonitoring) {
                 val currentTime = System.currentTimeMillis()
-                
-                // Check storage every 10 minutes
+
                 if (currentTime - lastStorageNotification > 10 * 60 * 1000) {
                     checkStorage()
                     lastStorageNotification = currentTime
                 }
-                
-                // Check RAM every 5 minutes
+
                 if (currentTime - lastRamNotification > 5 * 60 * 1000) {
                     checkRamUsage()
                     lastRamNotification = currentTime
                 }
-                
-                // Check junk files every 15 minutes
+
                 if (currentTime - lastJunkNotification > 15 * 60 * 1000) {
                     checkJunkFiles()
                     lastJunkNotification = currentTime
                 }
-                
-                // Check battery status every 5 minutes (backup to receiver)
+
                 if (currentTime - lastBatteryCheck > 5 * 60 * 1000) {
                     checkBatteryStatus()
                     lastBatteryCheck = currentTime
                 }
-                
-                // Check photo compression status every 2 minutes
+
                 checkPhotoCompressionStatus()
-                
-                delay(2 * 60 * 1000) // Check every 2 minutes
+                delay(2 * 60 * 1000)
             }
+        }
+    }
+
+    private fun showAfterCallDialog(phoneNumber: String?) {
+        // Show notification as backup
+        NotificationManager.showJunkFileNotification(this, 0)
+
+        if (OverlayPermission.hasOverlayPermission(this)) {
+            val intent = Intent(this, AfterCallDialogActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                putExtra("phoneNumber", phoneNumber)
+            }
+            startActivity(intent)
         }
     }
 
     private suspend fun checkJunkFiles() = withContext(Dispatchers.IO) {
         val settingsPrefs = SettingsPreferencesManager(this@MonitoringService)
-        
         if (!settingsPrefs.getJunkReminder()) return@withContext
 
-        try {
-            // Simulate junk file check - in real implementation, use ScanViewModel logic
-            // For now, we'll check if there are any large cache directories
-            val cacheDir = cacheDir
-            val cacheSize = getDirectorySize(cacheDir)
-            
-            // Threshold: 100MB
-            if (cacheSize > 100 * 1024 * 1024) {
-                NotificationManager.showJunkFileNotification(this@MonitoringService, cacheSize)
-            }
-        } catch (e: Exception) {
-            // Handle error silently
+        val cacheSize = getDirectorySize(cacheDir)
+        if (cacheSize > 100 * 1024 * 1024) {
+            NotificationManager.showJunkFileNotification(this@MonitoringService, cacheSize)
         }
     }
 
     private suspend fun checkRamUsage() = withContext(Dispatchers.IO) {
         val settingsPrefs = SettingsPreferencesManager(this@MonitoringService)
-        
         if (!settingsPrefs.getRamReminder()) return@withContext
 
-        try {
-            val ramInfo = RamUtils.getRamInfo(this@MonitoringService)
-            
-            // Show notification if RAM usage is above 80%
-            if (ramInfo.ramUsagePercentage >= 80) {
-                NotificationManager.showHighRamNotification(
-                    this@MonitoringService,
-                    ramInfo.ramUsagePercentage
-                )
-            }
-        } catch (e: Exception) {
-            // Handle error silently
+        val ramInfo = RamUtils.getRamInfo(this@MonitoringService)
+        if (ramInfo.ramUsagePercentage >= 80) {
+            NotificationManager.showHighRamNotification(this@MonitoringService, ramInfo.ramUsagePercentage)
         }
     }
 
     private suspend fun checkStorage() = withContext(Dispatchers.IO) {
-        try {
-            val storageInfo = StorageUtils.getStorageInfo(this@MonitoringService)
-            
-            // Show notification if storage is above 85% full
-            if (storageInfo.usagePercentage >= 85) {
-                NotificationManager.showStorageFullNotification(
-                    this@MonitoringService,
-                    storageInfo.freeSpace,
-                    storageInfo.usagePercentage
-                )
-            }
-        } catch (e: Exception) {
-            // Handle error silently
+        val storageInfo = StorageUtils.getStorageInfo(this@MonitoringService)
+        if (storageInfo.usagePercentage >= 85) {
+            NotificationManager.showStorageFullNotification(this@MonitoringService, storageInfo.freeSpace, storageInfo.usagePercentage)
         }
     }
 
     private suspend fun checkBatteryStatus() = withContext(Dispatchers.IO) {
         val settingsPrefs = SettingsPreferencesManager(this@MonitoringService)
-        
-        try {
-            val batteryIntent = registerReceiver(
-                null,
-                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
-            )
-            
-            batteryIntent?.let {
-                val level = it.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
-                val scale = it.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
-                val batteryLevel = (level * 100 / scale.toFloat()).toInt()
-                
-                val status = it.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
-                val isFull = status == android.os.BatteryManager.BATTERY_STATUS_FULL
-                
-                // Battery full notification (backup check)
-                if (settingsPrefs.getChargingReminder() && isFull && batteryLevel >= 100) {
-                    NotificationManager.showBatteryFullNotification(this@MonitoringService)
-                }
-                
-                // Low battery notification (backup check)
-                if (settingsPrefs.getLowBatteryReminder() && batteryLevel <= 20) {
-                    NotificationManager.showLowBatteryNotification(this@MonitoringService, batteryLevel)
-                }
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        batteryIntent?.let {
+            val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            val batteryLevel = (level * 100 / scale.toFloat()).toInt()
+            val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            val isFull = status == BatteryManager.BATTERY_STATUS_FULL
+
+            if (settingsPrefs.getChargingReminder() && isFull && batteryLevel >= 100) {
+                NotificationManager.showBatteryFullNotification(this@MonitoringService)
             }
-        } catch (e: Exception) {
-            // Handle error silently
+
+            if (settingsPrefs.getLowBatteryReminder() && batteryLevel <= 20) {
+                NotificationManager.showLowBatteryNotification(this@MonitoringService, batteryLevel)
+            }
         }
     }
 
     private suspend fun checkPhotoCompressionStatus() = withContext(Dispatchers.IO) {
-        try {
-            val prefs = getSharedPreferences("compressed_images", Context.MODE_PRIVATE)
-            val compressedUris = prefs.getStringSet("compressed_uris", emptySet()) ?: emptySet()
-            val lastNotifiedCount = prefs.getInt("last_notified_compressed_count", 0)
-            
-            // If new images were compressed, show notification
-            if (compressedUris.size > lastNotifiedCount) {
-                val newCompressedCount = compressedUris.size - lastNotifiedCount
-                
-                // Calculate space saved (estimate)
-                var totalSpaceSaved = 0L
-                compressedUris.forEach { uriString ->
-                    try {
-                        val uri = android.net.Uri.parse(uriString)
-                        val key = "size_${uri.toString().hashCode()}"
-                        val originalSize = prefs.getLong("${key}_original", 0L)
-                        val compressedSize = prefs.getLong("${key}_compressed", 0L)
-                        if (originalSize > 0 && compressedSize > 0) {
-                            totalSpaceSaved += (originalSize - compressedSize)
-                        }
-                    } catch (e: Exception) {
-                        // Skip this entry
-                    }
-                }
-                
-                if (newCompressedCount > 0 && totalSpaceSaved > 0) {
-                    NotificationManager.showPhotoCompressionCompleteNotification(
-                        this@MonitoringService,
-                        newCompressedCount,
-                        totalSpaceSaved
-                    )
-                    
-                    // Update last notified count
-                    prefs.edit().putInt("last_notified_compressed_count", compressedUris.size).apply()
-                }
+        val prefs = getSharedPreferences("compressed_images", Context.MODE_PRIVATE)
+        val compressedUris = prefs.getStringSet("compressed_uris", emptySet()) ?: emptySet()
+        val lastNotifiedCount = prefs.getInt("last_notified_compressed_count", 0)
+
+        if (compressedUris.size > lastNotifiedCount) {
+            val newCompressedCount = compressedUris.size - lastNotifiedCount
+            var totalSpaceSaved = 0L
+
+            compressedUris.forEach { uriString ->
+                try {
+                    val uri = android.net.Uri.parse(uriString)
+                    val key = "size_${uri.toString().hashCode()}"
+                    val originalSize = prefs.getLong("${key}_original", 0L)
+                    val compressedSize = prefs.getLong("${key}_compressed", 0L)
+                    if (originalSize > 0 && compressedSize > 0) totalSpaceSaved += (originalSize - compressedSize)
+                } catch (_: Exception) {}
             }
-        } catch (e: Exception) {
-            // Handle error silently
+
+            if (newCompressedCount > 0 && totalSpaceSaved > 0) {
+                NotificationManager.showPhotoCompressionCompleteNotification(this@MonitoringService, newCompressedCount, totalSpaceSaved)
+                prefs.edit().putInt("last_notified_compressed_count", compressedUris.size).apply()
+            }
         }
     }
 
     private fun getDirectorySize(directory: java.io.File): Long {
         var size = 0L
-        try {
-            val files = directory.listFiles()
-            files?.forEach { file ->
-                size += if (file.isDirectory) {
-                    getDirectorySize(file)
-                } else {
-                    file.length()
-                }
-            }
-        } catch (e: Exception) {
-            // Handle error
+        directory.listFiles()?.forEach { file ->
+            size += if (file.isDirectory) getDirectorySize(file) else file.length()
         }
         return size
     }
@@ -274,7 +244,7 @@ class MonitoringService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        telephonyManager.listen(callListener, PhoneStateListener.LISTEN_NONE)
         stopMonitoring()
     }
 }
-

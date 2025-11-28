@@ -137,6 +137,27 @@ fun NavGraph(navController: NavHostController) {
                 }
             )
         }
+        composable(Screen.DuplicateCleaner.route) {
+            DuplicateCleanerScreen(navController = navController)
+        }
+        composable(Screen.LargeFiles.route) {
+            LargeFilesScreen(navController = navController)
+        }
+        composable(Screen.ApkCleaner.route) {
+            ApkCleanerScreen(navController = navController)
+        }
+        composable(Screen.EmptyFolders.route) {
+            EmptyFoldersScreen(navController = navController)
+        }
+        composable(Screen.ClipboardCleaner.route) {
+            ClipboardCleanerScreen(navController = navController)
+        }
+        composable(Screen.ContactsCleaner.route) {
+            ContactsCleanerScreen(navController = navController)
+        }
+        composable(Screen.LinkCleaner.route) {
+            LinkCleanerScreen(navController = navController)
+        }
     }
 }
 
@@ -154,5 +175,12 @@ sealed class Screen(val route: String) {
     object AppManagement : Screen("app_management")
     object SpeakerMaintenance : Screen("speaker_maintenance")
     object UninstallReminder : Screen("uninstall_reminder")
+    object DuplicateCleaner : Screen("duplicate_cleaner")
+    object LargeFiles : Screen("large_files")
+    object ApkCleaner : Screen("apk_cleaner")
+    object EmptyFolders : Screen("empty_folders")
+    object ClipboardCleaner : Screen("clipboard_cleaner")
+    object ContactsCleaner : Screen("contacts_cleaner")
+    object LinkCleaner : Screen("link_cleaner")
 }
 

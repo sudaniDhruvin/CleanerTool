@@ -22,6 +22,9 @@ object NotificationManager {
     private const val CHANNEL_NAME_RAM = "RAM Reminders"
     private const val CHANNEL_NAME_UNINSTALL = "Uninstall Reminders"
     private const val CHANNEL_NAME_GENERAL = "General Reminders"
+    private const val CHANNEL_ID_AFTER_CALL = "after_call_reminders"
+    private const val CHANNEL_NAME_AFTER_CALL = "After Call Notifications"
+
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -76,6 +79,16 @@ object NotificationManager {
                 description = "General optimization reminders"
             }
             notificationManager.createNotificationChannel(generalChannel)
+
+            val afterCallChannel = NotificationChannel(
+                CHANNEL_ID_AFTER_CALL,
+                CHANNEL_NAME_AFTER_CALL,
+                AndroidNotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications after a call ends"
+            }
+            notificationManager.createNotificationChannel(afterCallChannel)
+
         }
     }
 
@@ -239,5 +252,28 @@ object NotificationManager {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
         notificationManager.notify(7001, notification)
     }
+
+    fun showAfterCallNotification(context: Context, phoneNumber: String?) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            putExtra("phoneNumber", phoneNumber)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_AFTER_CALL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Call Ended")
+            .setContentText("Tap to scan number: ${phoneNumber ?: "Unknown"}")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
+        notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+    }
+
 }
 
