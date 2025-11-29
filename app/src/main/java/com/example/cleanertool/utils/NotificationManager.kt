@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.example.cleanertool.MainActivity
 import com.example.cleanertool.R
@@ -253,7 +254,11 @@ object NotificationManager {
         notificationManager.notify(7001, notification)
     }
 
-    fun showAfterCallNotification(context: Context, phoneNumber: String?) {
+    fun showAfterCallNotification(
+        context: Context,
+        phoneNumber: String?,
+        callDirection: CallDirection = CallDirection.UNKNOWN
+    ) {
         val intent = Intent(context, MainActivity::class.java).apply {
             putExtra("phoneNumber", phoneNumber)
         }
@@ -262,10 +267,23 @@ object NotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val directionLabel = callDirection.displayLabel()
+        val contentText = buildString {
+            directionLabel?.let {
+                append(it)
+                if (!phoneNumber.isNullOrBlank()) append(" • ")
+            }
+            if (!phoneNumber.isNullOrBlank()) {
+                append(phoneNumber)
+            } else if (isEmpty()) {
+                append("Tap to scan the last call")
+            }
+        }
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_AFTER_CALL)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Call Ended")
-            .setContentText("Tap to scan number: ${phoneNumber ?: "Unknown"}")
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -273,6 +291,31 @@ object NotificationManager {
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+    }
+
+    fun showOverlayPermissionNotification(context: Context) {
+        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+            data = android.net.Uri.parse("package:${context.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_GENERAL)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Enable Overlay Permission")
+            .setContentText("Tap to allow popups on your screen (like Truecaller)")
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText("To show call and uninstall popups on your device screen, please enable 'Display over other apps' permission. Tap this notification to open settings."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as AndroidNotificationManager
+        notificationManager.notify(8001, notification)
     }
 
 }

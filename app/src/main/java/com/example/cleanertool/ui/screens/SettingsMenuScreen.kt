@@ -160,6 +160,12 @@ fun SettingsMenuScreen(navController: NavController) {
                     title = "Settings",
                     onClick = { navController.navigate("settings") }
                 )
+
+                MenuItem(
+                    icon = Icons.Default.PhoneAndroid,
+                    title = "Call Assistant Setup",
+                    onClick = { navController.navigate("call_assistant_setup") }
+                )
                 
                 MenuItem(
                     icon = Icons.Default.Star,

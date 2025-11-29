@@ -158,6 +158,9 @@ fun NavGraph(navController: NavHostController) {
         composable(Screen.LinkCleaner.route) {
             LinkCleanerScreen(navController = navController)
         }
+        composable("call_assistant_setup") {
+            CallAssistantSetupScreen(navController = navController)
+        }
     }
 }
 

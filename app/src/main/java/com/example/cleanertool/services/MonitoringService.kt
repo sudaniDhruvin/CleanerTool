@@ -1,19 +1,20 @@
 package com.example.cleanertool.services
 
 import android.app.*
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.annotation.SuppressLint
+import android.content.*
 import android.os.*
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
-import com.example.cleanertool.ui.screens.AfterCallDialogActivity
 import com.example.cleanertool.utils.NotificationManager
 import com.example.cleanertool.utils.OverlayPermission
 import com.example.cleanertool.utils.RamUtils
 import com.example.cleanertool.utils.SettingsPreferencesManager
 import com.example.cleanertool.utils.StorageUtils
+import com.example.cleanertool.utils.CallDirection
+import com.example.cleanertool.utils.CallDirection.*
+import android.util.Log
 import kotlinx.coroutines.*
 
 class MonitoringService : Service() {
@@ -22,6 +23,7 @@ class MonitoringService : Service() {
     private var isMonitoring = false
 
     companion object {
+        private const val TAG = "MonitoringService"
         private const val CHANNEL_ID = "monitoring_service_channel"
         private const val NOTIFICATION_ID = 1
         const val ACTION_START_MONITORING = "com.example.cleanertool.START_MONITORING"
@@ -30,6 +32,10 @@ class MonitoringService : Service() {
 
     private lateinit var telephonyManager: TelephonyManager
     private lateinit var callListener: PhoneStateListener
+    private lateinit var callInfoReceiver: BroadcastReceiver
+    private lateinit var uninstallReceiver: BroadcastReceiver
+    private var pendingNumberFromScreening: String? = null
+    private var pendingDirectionFromScreening: CallDirection = UNKNOWN
 
     override fun onCreate() {
         super.onCreate()
@@ -39,28 +45,9 @@ class MonitoringService : Service() {
         // Initialize telephony manager
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        // Setup call listener
-        callListener = object : PhoneStateListener() {
-            private var lastState = TelephonyManager.CALL_STATE_IDLE
-            private var savedNumber: String? = null
-
-            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                super.onCallStateChanged(state, phoneNumber)
-                when (state) {
-                    TelephonyManager.CALL_STATE_RINGING -> savedNumber = phoneNumber
-                    TelephonyManager.CALL_STATE_IDLE -> {
-                        if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            // Call ended
-                            showAfterCallDialog(savedNumber)
-                        }
-                    }
-                }
-                lastState = state
-            }
-        }
-
-        // Start listening for call state changes
-        telephonyManager.listen(callListener, PhoneStateListener.LISTEN_CALL_STATE)
+        setupCallListener()
+        registerCallInfoReceiver()
+        registerUninstallReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -107,6 +94,148 @@ class MonitoringService : Service() {
             .build()
     }
 
+    @SuppressLint("MissingPermission")
+    private fun setupCallListener() {
+        // Use default constructor; callbacks are delivered on the main thread.
+        callListener = object : PhoneStateListener() {
+            private var lastState = TelephonyManager.CALL_STATE_IDLE
+            private var activeNumber: String? = null
+            private var activeDirection: CallDirection = UNKNOWN
+            private var callInProgress = false
+
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                super.onCallStateChanged(state, phoneNumber)
+                val sanitizedNumber = phoneNumber?.takeIf { it.isNotBlank() }
+                if (sanitizedNumber != null) {
+                    activeNumber = sanitizedNumber
+                } else if (activeNumber.isNullOrBlank() && !pendingNumberFromScreening.isNullOrBlank()) {
+                    activeNumber = pendingNumberFromScreening
+                }
+
+                when (state) {
+                    TelephonyManager.CALL_STATE_RINGING -> {
+                        activeDirection = INCOMING
+                        callInProgress = false
+                    }
+
+                    TelephonyManager.CALL_STATE_OFFHOOK -> {
+                        activeDirection = when (lastState) {
+                            TelephonyManager.CALL_STATE_RINGING -> INCOMING
+                            else -> pendingDirectionFromScreening.takeUnless { it == UNKNOWN } ?: OUTGOING
+                        }
+                        if (activeNumber.isNullOrBlank()) {
+                            activeNumber = pendingNumberFromScreening
+                        }
+                        callInProgress = true
+                    }
+
+                    TelephonyManager.CALL_STATE_IDLE -> {
+                        if (callInProgress || lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            notifyCallEnded(activeNumber, activeDirection)
+                        }
+                        callInProgress = false
+                        activeNumber = null
+                        activeDirection = UNKNOWN
+                        clearPendingCallInfo()
+                    }
+                }
+                lastState = state
+            }
+        }
+
+        telephonyManager.listen(callListener, PhoneStateListener.LISTEN_CALL_STATE)
+    }
+
+    private fun registerCallInfoReceiver() {
+        callInfoReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != MyCallScreeningService.ACTION_CALL_IDENTIFIED) return
+                pendingNumberFromScreening = intent.getStringExtra(MyCallScreeningService.EXTRA_PHONE_NUMBER)
+                pendingDirectionFromScreening = intent
+                    .getStringExtra(MyCallScreeningService.EXTRA_CALL_DIRECTION)
+                    ?.let { runCatching { CallDirection.valueOf(it) }.getOrDefault(UNKNOWN) }
+                    ?: UNKNOWN
+            }
+        }
+
+        val filter = IntentFilter(MyCallScreeningService.ACTION_CALL_IDENTIFIED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(callInfoReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(callInfoReceiver, filter)
+        }
+    }
+
+    private fun registerUninstallReceiver() {
+        uninstallReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != Intent.ACTION_PACKAGE_REMOVED) return
+                
+                val settingsPrefs = SettingsPreferencesManager(this@MonitoringService)
+                if (!settingsPrefs.getUninstallReminder()) return
+
+                val packageName = intent.data?.schemeSpecificPart
+                if (packageName != null && !intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
+                    // App was uninstalled (not replaced)
+                    try {
+                        val packageManager = context?.packageManager ?: return
+                        val appInfo = packageManager.getApplicationInfo(packageName, 0)
+                        val appName = packageManager.getApplicationLabel(appInfo).toString()
+                        
+                        NotificationManager.showUninstallNotification(this@MonitoringService, appName)
+                        maybeShowUninstallOverlay(appName)
+                    } catch (e: Exception) {
+                        // App info not available, use package name
+                        NotificationManager.showUninstallNotification(this@MonitoringService, packageName)
+                        maybeShowUninstallOverlay(packageName)
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply {
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(uninstallReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(uninstallReceiver, filter)
+        }
+    }
+
+    private fun maybeShowUninstallOverlay(appName: String) {
+        Log.d(TAG, "App uninstalled: $appName")
+        if (!OverlayPermission.hasOverlayPermission(this)) {
+            Log.w(TAG, "Overlay permission not granted. Requesting permission...")
+            // Automatically open overlay permission settings
+            OverlayPermission.requestOverlayPermission(this)
+            // Show a notification to guide user
+            NotificationManager.showOverlayPermissionNotification(this)
+            return
+        }
+
+        val overlayIntent = Intent(this, CallOverlayService::class.java).apply {
+            putExtra(CallOverlayService.EXTRA_PRIMARY_TEXT, appName)
+            putExtra(CallOverlayService.EXTRA_SECONDARY_TEXT, "Tap to clean leftovers")
+            putExtra(CallOverlayService.EXTRA_MODE, CallOverlayService.MODE_UNINSTALL)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(overlayIntent)
+            } else {
+                startService(overlayIntent)
+            }
+            Log.d(TAG, "Started CallOverlayService for uninstall")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting CallOverlayService for uninstall", e)
+        }
+    }
+
+    private fun clearPendingCallInfo() {
+        pendingNumberFromScreening = null
+        pendingDirectionFromScreening = UNKNOWN
+    }
+
     private fun startMonitoring() {
         serviceScope.launch {
             var lastStorageNotification = 0L
@@ -143,16 +272,34 @@ class MonitoringService : Service() {
         }
     }
 
-    private fun showAfterCallDialog(phoneNumber: String?) {
-        // Show notification as backup
-        NotificationManager.showJunkFileNotification(this, 0)
+    private fun notifyCallEnded(phoneNumber: String?, callDirection: CallDirection) {
+        Log.d(TAG, "Call ended: $phoneNumber, direction: ${callDirection.name}")
+        NotificationManager.showAfterCallNotification(this, phoneNumber, callDirection)
 
-        if (OverlayPermission.hasOverlayPermission(this)) {
-            val intent = Intent(this, AfterCallDialogActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                putExtra("phoneNumber", phoneNumber)
+        if (!OverlayPermission.hasOverlayPermission(this)) {
+            Log.w(TAG, "Overlay permission not granted. Requesting permission...")
+            // Automatically open overlay permission settings
+            OverlayPermission.requestOverlayPermission(this)
+            // Show a notification to guide user
+            NotificationManager.showOverlayPermissionNotification(this)
+            return
+        }
+
+        // Show lightweight overlay widget via background service
+        val overlayIntent = Intent(this, CallOverlayService::class.java).apply {
+            putExtra(CallOverlayService.EXTRA_PRIMARY_TEXT, phoneNumber)
+            putExtra(CallOverlayService.EXTRA_SECONDARY_TEXT, callDirection.displayLabel())
+            putExtra(CallOverlayService.EXTRA_MODE, CallOverlayService.MODE_CALL)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(overlayIntent)
+            } else {
+                startService(overlayIntent)
             }
-            startActivity(intent)
+            Log.d(TAG, "Started CallOverlayService for call ended")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting CallOverlayService", e)
         }
     }
 
@@ -242,9 +389,30 @@ class MonitoringService : Service() {
         serviceScope.cancel()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Try to keep monitoring alive when the app task is swiped away.
+        val restartIntent = Intent(applicationContext, MonitoringService::class.java).apply {
+            action = ACTION_START_MONITORING
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            applicationContext.startForegroundService(restartIntent)
+        } else {
+            applicationContext.startService(restartIntent)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         telephonyManager.listen(callListener, PhoneStateListener.LISTEN_NONE)
+        try {
+            unregisterReceiver(callInfoReceiver)
+        } catch (_: Exception) {
+        }
+        try {
+            unregisterReceiver(uninstallReceiver)
+        } catch (_: Exception) {
+        }
         stopMonitoring()
     }
 }

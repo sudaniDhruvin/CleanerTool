@@ -7,27 +7,55 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import com.example.cleanertool.ui.theme.CleanerToolTheme
+import com.example.cleanertool.utils.CallDirection
 
 class AfterCallDialogActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val phoneNumber = intent.getStringExtra("phoneNumber")
+        val callDirection = intent.getStringExtra("callDirection")?.let {
+            runCatching { CallDirection.valueOf(it) }.getOrDefault(CallDirection.UNKNOWN)
+        } ?: CallDirection.UNKNOWN
+        setFinishOnTouchOutside(false)
         setContent {
             CleanerToolTheme {
-                AfterCallDialogScreen(phoneNumber)
+                AfterCallDialogScreen(
+                    phoneNumber = phoneNumber,
+                    callDirection = callDirection,
+                    onDismiss = { finish() }
+                )
             }
         }
     }
 }
 
 @Composable
-fun AfterCallDialogScreen(phoneNumber: String?) {
-    Log.d("phoneNumber", "AfterCallDialogScreen: " + phoneNumber)
+fun AfterCallDialogScreen(
+    phoneNumber: String?,
+    callDirection: CallDirection,
+    onDismiss: () -> Unit
+) {
+    Log.d("AfterCallDialog", "AfterCallDialogScreen: $phoneNumber ${callDirection.name}")
     AlertDialog(
-        onDismissRequest = { },
+        onDismissRequest = onDismiss,
         title = { Text("Call Ended") },
-        text = { Text("Number: ${phoneNumber ?: "Unknown"}") },
-        confirmButton = { TextButton(onClick = { /* Scan number */ }) { Text("Scan") } },
-        dismissButton = { TextButton(onClick = { /* Close dialog */ }) { Text("Close") } }
+        text = {
+            Text(
+                buildString {
+                    append(callDirection.displayLabel() ?: "Recent call")
+                    append("\nNumber: ${phoneNumber ?: "Unknown"}")
+                }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Scan")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
     )
 }

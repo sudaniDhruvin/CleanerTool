@@ -4,6 +4,7 @@ import android.content.Intent
 import android.telecom.Call
 import android.telecom.CallScreeningService
 import android.util.Log
+import com.example.cleanertool.utils.CallDirection
 import com.example.cleanertool.ui.screens.AfterCallDialogActivity
 import com.example.cleanertool.utils.NotificationManager
 import com.example.cleanertool.utils.OverlayPermission
@@ -14,7 +15,15 @@ class MyCallScreeningService : CallScreeningService() {
     private var currentNumber: String? = null
 
     override fun onScreenCall(callDetails: Call.Details) {
-        // observe calls here
+        val phoneNumber = callDetails.handle?.schemeSpecificPart
+        val direction = when (callDetails.callDirection) {
+            Call.Details.DIRECTION_INCOMING -> CallDirection.INCOMING
+            Call.Details.DIRECTION_OUTGOING -> CallDirection.OUTGOING
+            else -> CallDirection.UNKNOWN
+        }
+
+        broadcastCallIdentified(phoneNumber, direction)
+
         val response = CallResponse.Builder()
             .setDisallowCall(false)
             .setSkipCallLog(false)
@@ -34,8 +43,7 @@ class MyCallScreeningService : CallScreeningService() {
     }
 
     private fun onCallEnded(phoneNumber: String?) {
-        Log.d("phoneNumber", "onCallEnded: ", phoneNumber as Throwable?)
-        // Show notification
+        Log.d("MyCallScreeningService", "onCallEnded: $phoneNumber")
         NotificationManager.showAfterCallNotification(applicationContext, phoneNumber)
 
         // Optional: overlay popup if permission granted
@@ -48,4 +56,18 @@ class MyCallScreeningService : CallScreeningService() {
         }
     }
 
+    private fun broadcastCallIdentified(phoneNumber: String?, direction: CallDirection) {
+        val intent = Intent(ACTION_CALL_IDENTIFIED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_PHONE_NUMBER, phoneNumber)
+            putExtra(EXTRA_CALL_DIRECTION, direction.name)
+        }
+        applicationContext.sendBroadcast(intent)
+    }
+
+    companion object {
+        const val ACTION_CALL_IDENTIFIED = "com.example.cleanertool.ACTION_CALL_IDENTIFIED"
+        const val EXTRA_PHONE_NUMBER = "extra_phone_number"
+        const val EXTRA_CALL_DIRECTION = "extra_call_direction"
+    }
 }
