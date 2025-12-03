@@ -26,6 +26,7 @@ import com.example.cleanertool.receivers.UninstallReceiver
 import com.example.cleanertool.services.MonitoringService
 import com.example.cleanertool.ui.theme.CleanerToolTheme
 import com.example.cleanertool.utils.NotificationManager
+import com.example.cleanertool.utils.OverlayPermission
 
 class MainActivity : ComponentActivity() {
     private lateinit var batteryReceiver: BatteryBroadcastReceiver
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
             Log.w("MainActivity", "Storage permissions denied: $permissions")
             // You can show a dialog explaining why permissions are needed
         }
+        // After storage permissions are handled, request other permissions
+        requestOtherPermissions()
     }
 
     private val manageStoragePermissionLauncher = registerForActivityResult(
@@ -50,10 +53,36 @@ class MainActivity : ComponentActivity() {
         Log.i("MainActivity", "Returned from all-files access screen")
     }
 
+    // Permission launcher for call logs, contacts, microphone, and telephone permissions
+    private val otherPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        permissions.entries.forEach { (permission, isGranted) ->
+            if (isGranted) {
+                Log.i("MainActivity", "Permission granted: $permission")
+            } else {
+                Log.w("MainActivity", "Permission denied: $permission")
+            }
+        }
+        // After other permissions are handled, request overlay permission
+        requestOverlayPermissionIfNeeded()
+    }
+
+    // Activity launcher for overlay permission settings
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (OverlayPermission.hasOverlayPermission(this)) {
+            Log.i("MainActivity", "Overlay permission granted")
+        } else {
+            Log.w("MainActivity", "Overlay permission not granted")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Request storage permissions
+        // Request storage permissions (other permissions will be requested after storage permissions are handled)
         requestStoragePermissions()
 
         // Create notification channels
@@ -136,9 +165,79 @@ class MainActivity : ComponentActivity() {
             storagePermissionLauncher.launch(notGrantedPermissions.toTypedArray())
         } else {
             Log.i("MainActivity", "All storage permissions already granted")
+            // If storage permissions are already granted, request other permissions immediately
+            requestOtherPermissions()
         }
 
         requestAllFilesAccessPermissionIfNeeded()
+    }
+
+    private fun requestOtherPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val permissions = mutableListOf<String>()
+            
+            // READ_CALL_LOG permission
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_CALL_LOG
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissions.add(Manifest.permission.READ_CALL_LOG)
+            }
+            
+            // READ_CONTACTS permission
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_CONTACTS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissions.add(Manifest.permission.READ_CONTACTS)
+            }
+            
+            // RECORD_AUDIO permission (microphone)
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.RECORD_AUDIO
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissions.add(Manifest.permission.RECORD_AUDIO)
+            }
+            
+            // READ_PHONE_STATE permission (telephone)
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.READ_PHONE_STATE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissions.add(Manifest.permission.READ_PHONE_STATE)
+            }
+            
+            if (permissions.isNotEmpty()) {
+                Log.i("MainActivity", "Requesting permissions: ${permissions.joinToString()}")
+                otherPermissionsLauncher.launch(permissions.toTypedArray())
+            } else {
+                Log.i("MainActivity", "All other permissions already granted")
+                // If other permissions are already granted, request overlay permission immediately
+                requestOverlayPermissionIfNeeded()
+            }
+        }
+    }
+
+    private fun requestOverlayPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!OverlayPermission.hasOverlayPermission(this)) {
+                Log.i("MainActivity", "Requesting overlay permission")
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                overlayPermissionLauncher.launch(intent)
+            } else {
+                Log.i("MainActivity", "Overlay permission already granted")
+            }
+        }
     }
 
     // Helper function to check if storage permissions are granted
