@@ -14,7 +14,15 @@ import com.example.cleanertool.utils.SettingsPreferencesManager
 import com.example.cleanertool.utils.StorageUtils
 import com.example.cleanertool.utils.CallDirection
 import com.example.cleanertool.utils.CallDirection.*
+import com.example.cleanertool.utils.ContactUtils
+import android.Manifest
+import android.content.pm.PackageManager
+import android.provider.CallLog
+import android.telecom.TelecomManager
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 
 class MonitoringService : Service() {
@@ -105,17 +113,22 @@ class MonitoringService : Service() {
 
             override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                 super.onCallStateChanged(state, phoneNumber)
+                Log.d(TAG, "Call state changed: state=$state, phoneNumber=$phoneNumber, pendingNumber=$pendingNumberFromScreening")
+                
                 val sanitizedNumber = phoneNumber?.takeIf { it.isNotBlank() }
                 if (sanitizedNumber != null) {
                     activeNumber = sanitizedNumber
+                    Log.d(TAG, "Set activeNumber from PhoneStateListener: $activeNumber")
                 } else if (activeNumber.isNullOrBlank() && !pendingNumberFromScreening.isNullOrBlank()) {
                     activeNumber = pendingNumberFromScreening
+                    Log.d(TAG, "Set activeNumber from CallScreeningService: $activeNumber")
                 }
 
                 when (state) {
                     TelephonyManager.CALL_STATE_RINGING -> {
                         activeDirection = INCOMING
                         callInProgress = false
+                        Log.d(TAG, "Call ringing - incoming call")
                     }
 
                     TelephonyManager.CALL_STATE_OFFHOOK -> {
@@ -125,12 +138,15 @@ class MonitoringService : Service() {
                         }
                         if (activeNumber.isNullOrBlank()) {
                             activeNumber = pendingNumberFromScreening
+                            Log.d(TAG, "Call offhook - using pendingNumber: $activeNumber")
                         }
                         callInProgress = true
+                        Log.d(TAG, "Call offhook - direction: $activeDirection, number: $activeNumber")
                     }
 
                     TelephonyManager.CALL_STATE_IDLE -> {
                         if (callInProgress || lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            Log.d(TAG, "Call ended - activeNumber: $activeNumber, direction: $activeDirection")
                             notifyCallEnded(activeNumber, activeDirection)
                         }
                         callInProgress = false
@@ -155,6 +171,7 @@ class MonitoringService : Service() {
                     .getStringExtra(MyCallScreeningService.EXTRA_CALL_DIRECTION)
                     ?.let { runCatching { CallDirection.valueOf(it) }.getOrDefault(UNKNOWN) }
                     ?: UNKNOWN
+                Log.d(TAG, "Received call info broadcast - Number: $pendingNumberFromScreening, Direction: $pendingDirectionFromScreening")
             }
         }
 
@@ -274,7 +291,50 @@ class MonitoringService : Service() {
 
     private fun notifyCallEnded(phoneNumber: String?, callDirection: CallDirection) {
         Log.d(TAG, "Call ended: $phoneNumber, direction: ${callDirection.name}")
-        NotificationManager.showAfterCallNotification(this, phoneNumber, callDirection)
+        
+        // If phone number is null or empty, try to get it from CallLog with retries
+        if (phoneNumber.isNullOrBlank()) {
+            Log.d(TAG, "Phone number is null/empty, will try to get from CallLog with retries")
+            tryGetNumberFromCallLogWithRetries(callDirection, retryCount = 0)
+            return
+        }
+        
+        // Phone number is available, proceed immediately
+        showCallOverlay(phoneNumber, callDirection)
+    }
+    
+    private fun tryGetNumberFromCallLogWithRetries(callDirection: CallDirection, retryCount: Int) {
+        val maxRetries = 5
+        val delays = arrayOf(500L, 1000L, 1500L, 2000L, 3000L) // Increasing delays
+        
+        if (retryCount >= maxRetries) {
+            Log.w(TAG, "Failed to get number from CallLog after $maxRetries retries")
+            showCallOverlay(null, callDirection)
+            return
+        }
+        
+        val delay = if (retryCount < delays.size) delays[retryCount] else delays.last()
+        
+        Handler(Looper.getMainLooper()).postDelayed({
+            val finalPhoneNumber = getLastCallNumber()
+            if (!finalPhoneNumber.isNullOrBlank()) {
+                Log.d(TAG, "Got number from CallLog on retry $retryCount: $finalPhoneNumber")
+                showCallOverlay(finalPhoneNumber, callDirection)
+            } else {
+                Log.d(TAG, "CallLog read returned null on retry $retryCount, retrying...")
+                tryGetNumberFromCallLogWithRetries(callDirection, retryCount + 1)
+            }
+        }, delay)
+    }
+    
+    private fun showCallOverlay(phoneNumber: String?, callDirection: CallDirection) {
+        Log.d(TAG, "Showing call overlay for number: $phoneNumber")
+        
+        // Get contact name from phone number
+        val (contactName, displayNumber) = ContactUtils.getContactNameFromNumber(this, phoneNumber)
+        Log.d(TAG, "Contact lookup - Name: $contactName, Number: $displayNumber")
+        
+        NotificationManager.showAfterCallNotification(this, displayNumber, callDirection)
 
         if (!OverlayPermission.hasOverlayPermission(this)) {
             Log.w(TAG, "Overlay permission not granted. Requesting permission...")
@@ -287,8 +347,10 @@ class MonitoringService : Service() {
 
         // Show lightweight overlay widget via background service
         val overlayIntent = Intent(this, CallOverlayService::class.java).apply {
-            putExtra(CallOverlayService.EXTRA_PRIMARY_TEXT, phoneNumber)
-            putExtra(CallOverlayService.EXTRA_SECONDARY_TEXT, callDirection.displayLabel())
+            // Pass contact name as primary text, number as secondary
+            putExtra(CallOverlayService.EXTRA_CONTACT_NAME, contactName)
+            putExtra(CallOverlayService.EXTRA_PHONE_NUMBER, displayNumber)
+            putExtra(CallOverlayService.EXTRA_CALL_DIRECTION, callDirection.name)
             putExtra(CallOverlayService.EXTRA_MODE, CallOverlayService.MODE_CALL)
         }
         try {
@@ -301,6 +363,93 @@ class MonitoringService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error starting CallOverlayService", e)
         }
+    }
+    
+    /**
+     * Get the phone number from the most recent call in CallLog as a fallback
+     */
+    private fun getLastCallNumber(): String? {
+        // Check if READ_CALL_LOG permission is granted
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) 
+            != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "READ_CALL_LOG permission not granted, cannot read CallLog")
+            return null
+        }
+        
+        try {
+            val projection = arrayOf(
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DATE,
+                CallLog.Calls.DURATION
+            )
+            
+            // Strategy 1: Get the most recent call (within last 120 seconds)
+            val currentTime = System.currentTimeMillis()
+            val twoMinutesAgo = currentTime - 120000
+            
+            var selection = "${CallLog.Calls.DATE} > ?"
+            var selectionArgs = arrayOf(twoMinutesAgo.toString())
+            
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                "${CallLog.Calls.DATE} DESC LIMIT 1"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+                    val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
+                    val durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION)
+                    
+                    if (numberIndex >= 0) {
+                        val number = cursor.getString(numberIndex)
+                        val callDate = if (dateIndex >= 0) cursor.getLong(dateIndex) else 0L
+                        val duration = if (durationIndex >= 0) cursor.getInt(durationIndex) else 0
+                        
+                        // Verify this is a recent call (within last 2 minutes) and had some duration
+                        if (!number.isNullOrBlank() && 
+                            callDate > twoMinutesAgo && 
+                            (duration > 0 || callDate > currentTime - 10000)) { // Allow calls that just ended
+                            Log.d(TAG, "Got number from CallLog: $number (date: $callDate, duration: $duration)")
+                            return number
+                        }
+                    }
+                }
+            }
+            
+            // Strategy 2: Get the absolute most recent call without time filter
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CallLog.Calls.DATE} DESC LIMIT 1"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+                    val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
+                    
+                    if (numberIndex >= 0) {
+                        val number = cursor.getString(numberIndex)
+                        val callDate = if (dateIndex >= 0) cursor.getLong(dateIndex) else 0L
+                        
+                        // Check if this call was very recent (within last 5 minutes)
+                        if (!number.isNullOrBlank() && callDate > currentTime - 300000) {
+                            Log.d(TAG, "Got number from CallLog (no filter): $number")
+                            return number
+                        }
+                    }
+                }
+            }
+            
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException reading CallLog - permission may have been revoked", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading CallLog", e)
+        }
+        return null
     }
 
     private suspend fun checkJunkFiles() = withContext(Dispatchers.IO) {

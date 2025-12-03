@@ -16,12 +16,14 @@ class MyCallScreeningService : CallScreeningService() {
 
     override fun onScreenCall(callDetails: Call.Details) {
         val phoneNumber = callDetails.handle?.schemeSpecificPart
+        currentNumber = phoneNumber
         val direction = when (callDetails.callDirection) {
             Call.Details.DIRECTION_INCOMING -> CallDirection.INCOMING
             Call.Details.DIRECTION_OUTGOING -> CallDirection.OUTGOING
             else -> CallDirection.UNKNOWN
         }
 
+        Log.d("MyCallScreeningService", "onScreenCall - Number: $phoneNumber, Direction: ${direction.name}")
         broadcastCallIdentified(phoneNumber, direction)
 
         val response = CallResponse.Builder()
@@ -57,12 +59,18 @@ class MyCallScreeningService : CallScreeningService() {
     }
 
     private fun broadcastCallIdentified(phoneNumber: String?, direction: CallDirection) {
+        Log.d("MyCallScreeningService", "broadcastCallIdentified - Number: $phoneNumber, Direction: ${direction.name}")
         val intent = Intent(ACTION_CALL_IDENTIFIED).apply {
             setPackage(packageName)
             putExtra(EXTRA_PHONE_NUMBER, phoneNumber)
             putExtra(EXTRA_CALL_DIRECTION, direction.name)
         }
-        applicationContext.sendBroadcast(intent)
+        try {
+            applicationContext.sendBroadcast(intent)
+            Log.d("MyCallScreeningService", "Broadcast sent successfully")
+        } catch (e: Exception) {
+            Log.e("MyCallScreeningService", "Error sending broadcast", e)
+        }
     }
 
     companion object {

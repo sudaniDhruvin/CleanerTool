@@ -1,12 +1,16 @@
  package com.example.cleanertool.ui.screens
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.telecom.TelecomManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -19,17 +23,34 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.cleanertool.services.MyCallScreeningService
 
 @Composable
 fun CallAssistantSetupScreen(navController: NavController) {
     val context = LocalContext.current
+    var hasCallLogPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) ==
+                    PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val callLogPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCallLogPermission = isGranted
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -78,6 +99,20 @@ fun CallAssistantSetupScreen(navController: NavController) {
                 onClick = { requestOverlayPermission(context) }
             ) {
                 Text("Allow Display Over Other Apps")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        callLogPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+                    }
+                },
+                enabled = !hasCallLogPermission
+            ) {
+                Text(if (hasCallLogPermission) "Call Log Permission Granted ✓" else "Allow Call Log Access")
             }
 
             Spacer(modifier = Modifier.height(32.dp))
