@@ -3,6 +3,7 @@ package com.example.cleanertool.services
 import android.app.*
 import android.annotation.SuppressLint
 import android.content.*
+import android.content.pm.ServiceInfo
 import android.os.*
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
@@ -48,7 +49,24 @@ class MonitoringService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+ (API 31+) requires service type to be specified
+                @Suppress("NewApi")
+                startForeground(NOTIFICATION_ID, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                // Android 11 and below
+                startForeground(NOTIFICATION_ID, createNotification())
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}", e)
+            // Try without service type as fallback (shouldn't happen but just in case)
+            try {
+                startForeground(NOTIFICATION_ID, createNotification())
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to start foreground service even without type", e2)
+            }
+        }
 
         // Initialize telephony manager
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager

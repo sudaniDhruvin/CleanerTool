@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -47,7 +48,24 @@ class CallOverlayService : Service() {
         
         // Start as foreground service to prevent system from killing it
         createNotificationChannel()
-        startForeground(1, createNotification())
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+ (API 31+) requires service type to be specified
+                @Suppress("NewApi")
+                startForeground(1, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                // Android 11 and below
+                startForeground(1, createNotification())
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}", e)
+            // Try without service type as fallback (shouldn't happen but just in case)
+            try {
+                startForeground(1, createNotification())
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to start foreground service even without type", e2)
+            }
+        }
     }
     
     private fun createNotificationChannel() {
