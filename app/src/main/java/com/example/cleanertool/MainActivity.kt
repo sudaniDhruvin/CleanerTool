@@ -66,6 +66,8 @@ class MainActivity : ComponentActivity() {
         }
         // After other permissions are handled, request overlay permission
         requestOverlayPermissionIfNeeded()
+        // Start monitoring service after permissions are granted
+        startMonitoringService()
     }
 
     // Activity launcher for overlay permission settings
@@ -108,15 +110,8 @@ class MainActivity : ComponentActivity() {
             registerReceiver(uninstallReceiver, uninstallFilter)
         }
 
-        // Start monitoring service
-        val serviceIntent = Intent(this, MonitoringService::class.java).apply {
-            action = MonitoringService.ACTION_START_MONITORING
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
+        // Don't start service immediately - wait for permissions to be granted
+        // Service will be started after permissions are handled
 
         enableEdgeToEdge()
         setContent {
@@ -167,6 +162,10 @@ class MainActivity : ComponentActivity() {
             Log.i("MainActivity", "All storage permissions already granted")
             // If storage permissions are already granted, request other permissions immediately
             requestOtherPermissions()
+            // If no permissions need to be requested, start service immediately
+            if (areAllPermissionsGranted()) {
+                startMonitoringService()
+            }
         }
 
         requestAllFilesAccessPermissionIfNeeded()
@@ -228,7 +227,38 @@ class MainActivity : ComponentActivity() {
                 Log.i("MainActivity", "All other permissions already granted")
                 // If other permissions are already granted, request overlay permission immediately
                 requestOverlayPermissionIfNeeded()
+                // Start monitoring service if all permissions are granted
+                if (areAllPermissionsGranted()) {
+                    startMonitoringService()
+                }
             }
+        }
+    }
+    
+    private fun areAllPermissionsGranted(): Boolean {
+        // Check if essential permissions are granted (don't need all, just the critical ones)
+        val essentialPermissions = listOf(
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG
+        )
+        return essentialPermissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+    
+    private fun startMonitoringService() {
+        try {
+            val serviceIntent = Intent(this, MonitoringService::class.java).apply {
+                action = MonitoringService.ACTION_START_MONITORING
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            Log.i("MainActivity", "Monitoring service started")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to start monitoring service", e)
         }
     }
 
@@ -236,6 +266,11 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!OverlayPermission.hasOverlayPermission(this)) {
                 Log.i("MainActivity", "Requesting overlay permission")
+                // Start service even if overlay permission is not granted
+                // Overlay permission can be granted later when needed
+                if (areAllPermissionsGranted()) {
+                    startMonitoringService()
+                }
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:$packageName")
@@ -245,6 +280,10 @@ class MainActivity : ComponentActivity() {
                 overlayPermissionLauncher.launch(intent)
             } else {
                 Log.i("MainActivity", "Overlay permission already granted")
+                // Start service if all permissions are granted
+                if (areAllPermissionsGranted()) {
+                    startMonitoringService()
+                }
             }
         }
     }

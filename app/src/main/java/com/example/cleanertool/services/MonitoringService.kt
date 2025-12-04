@@ -68,12 +68,24 @@ class MonitoringService : Service() {
             }
         }
 
-        // Initialize telephony manager
-        telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-
-        setupCallListener()
-        registerCallInfoReceiver()
-        registerUninstallReceiver()
+        // Initialize telephony manager (only if permission is granted)
+        try {
+            telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            
+            // Only setup call listener if READ_PHONE_STATE permission is granted
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
+                == PackageManager.PERMISSION_GRANTED) {
+                setupCallListener()
+            } else {
+                Log.w(TAG, "READ_PHONE_STATE permission not granted, skipping call listener setup")
+            }
+            
+            registerCallInfoReceiver()
+            registerUninstallReceiver()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing telephony manager or listeners", e)
+            // Continue without call monitoring if there's an error
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -122,6 +134,13 @@ class MonitoringService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun setupCallListener() {
+        // Check permission before setting up listener
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) 
+            != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "READ_PHONE_STATE permission not granted, cannot setup call listener")
+            return
+        }
+        
         // Use default constructor; callbacks are delivered on the main thread.
         callListener = object : PhoneStateListener() {
             private var lastState = TelephonyManager.CALL_STATE_IDLE
@@ -177,7 +196,13 @@ class MonitoringService : Service() {
             }
         }
 
-        telephonyManager.listen(callListener, PhoneStateListener.LISTEN_CALL_STATE)
+        try {
+            telephonyManager.listen(callListener, PhoneStateListener.LISTEN_CALL_STATE)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Failed to register call listener - permission not granted", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register call listener", e)
+        }
     }
 
     private fun registerCallInfoReceiver() {
@@ -571,7 +596,13 @@ class MonitoringService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        telephonyManager.listen(callListener, PhoneStateListener.LISTEN_NONE)
+        try {
+            if (::telephonyManager.isInitialized && ::callListener.isInitialized) {
+                telephonyManager.listen(callListener, PhoneStateListener.LISTEN_NONE)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error unregistering call listener", e)
+        }
         try {
             unregisterReceiver(callInfoReceiver)
         } catch (_: Exception) {
