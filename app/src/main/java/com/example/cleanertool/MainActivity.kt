@@ -212,6 +212,15 @@ class MainActivity : ComponentActivity() {
                 permissions.add(Manifest.permission.READ_PHONE_STATE)
             }
             
+            // CALL_PHONE permission (to make phone calls)
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.CALL_PHONE
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissions.add(Manifest.permission.CALL_PHONE)
+            }
+            
             if (permissions.isNotEmpty()) {
                 Log.i("MainActivity", "Requesting permissions: ${permissions.joinToString()}")
                 otherPermissionsLauncher.launch(permissions.toTypedArray())

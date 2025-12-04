@@ -19,10 +19,13 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.cleanertool.MainActivity
 import com.example.cleanertool.R
 import com.example.cleanertool.utils.OverlayPermission
 import android.provider.ContactsContract
+import android.Manifest
+import android.content.pm.PackageManager
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -296,21 +299,32 @@ class CallOverlayService : Service() {
             }
         }
 
-        // Call action button - Opens dialer and closes overlay
+        // Call action button - Initiates phone call
         val callAction = overlayView?.findViewById<LinearLayout>(R.id.btn_action_call)
         callAction?.setOnClickListener {
             if (mode == MODE_CALL && !primaryText.isNullOrBlank()) {
                 Log.d(TAG, "Call action clicked: $primaryText")
-                // Use ACTION_DIAL instead of ACTION_CALL (no permission needed)
-                val callIntent = Intent(Intent.ACTION_DIAL).apply {
-                    data = android.net.Uri.parse("tel:$primaryText")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                try {
-                    startActivity(callIntent)
-                    removeOverlay()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting dialer", e)
+                
+                // Check if CALL_PHONE permission is granted
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) 
+                    == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted - directly initiate the call
+                    val callIntent = Intent(Intent.ACTION_CALL).apply {
+                        data = android.net.Uri.parse("tel:$primaryText")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    try {
+                        startActivity(callIntent)
+                        removeOverlay()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error making call", e)
+                        // Fallback to dialer on any error
+                        openDialer(primaryText)
+                    }
+                } else {
+                    // Permission not granted - open dialer instead
+                    Log.w(TAG, "CALL_PHONE permission not granted, opening dialer")
+                    openDialer(primaryText)
                 }
             }
         }
@@ -386,6 +400,22 @@ class CallOverlayService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in openContactEditScreen", e)
+        }
+    }
+    
+    /**
+     * Open the dialer with the given phone number
+     */
+    private fun openDialer(phoneNumber: String) {
+        val dialIntent = Intent(Intent.ACTION_DIAL).apply {
+            data = android.net.Uri.parse("tel:$phoneNumber")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            startActivity(dialIntent)
+            removeOverlay()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting dialer", e)
         }
     }
     
