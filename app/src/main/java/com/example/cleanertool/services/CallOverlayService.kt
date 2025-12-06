@@ -261,8 +261,38 @@ class CallOverlayService : Service() {
         val primaryActionBtn = overlayView?.findViewById<Button>(R.id.btn_primary_action)
         if (mode == MODE_UNINSTALL) {
             primaryActionBtn?.text = "Clean"
+            // Orange color for uninstall mode button
+            primaryActionBtn?.setBackgroundColor(0xFFFF9800.toInt())
         } else {
             primaryActionBtn?.text = "View"
+            // Blue color for call mode button
+            primaryActionBtn?.setBackgroundColor(0xFF2196F3.toInt())
+        }
+
+        // Action buttons row - Hide for uninstall mode, show for call mode
+        val actionButtonsRow = overlayView?.findViewById<LinearLayout>(R.id.action_buttons_row)
+        if (mode == MODE_UNINSTALL) {
+            actionButtonsRow?.visibility = View.GONE
+        } else {
+            actionButtonsRow?.visibility = View.VISIBLE
+        }
+
+        // Divider - Hide for uninstall mode since action buttons are hidden
+        val divider = overlayView?.findViewById<View>(R.id.divider)
+        if (mode == MODE_UNINSTALL) {
+            divider?.visibility = View.GONE
+        } else {
+            divider?.visibility = View.VISIBLE
+        }
+
+        // Banner background color - Different color for uninstall
+        val bannerLayout = overlayView?.findViewById<LinearLayout>(R.id.banner_layout)
+        if (mode == MODE_UNINSTALL) {
+            // Orange color for uninstall mode
+            bannerLayout?.setBackgroundColor(0xFFFF9800.toInt()) // Orange
+        } else {
+            // Blue color for call mode
+            bannerLayout?.setBackgroundColor(0xFF2196F3.toInt()) // Blue
         }
     }
 

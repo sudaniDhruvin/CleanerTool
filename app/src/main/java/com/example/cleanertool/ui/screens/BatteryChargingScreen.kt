@@ -19,8 +19,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.cleanertool.navigation.Screen
 import com.example.cleanertool.viewmodel.BatteryViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,6 +30,13 @@ import com.example.cleanertool.viewmodel.BatteryViewModel
 fun BatteryChargingScreen(navController: NavController) {
     val viewModel: BatteryViewModel = viewModel()
     val batteryInfo by viewModel.batteryInfo.collectAsState()
+
+    // Handle hardware back button - navigate to Home instead of scanning screen
+    BackHandler {
+        navController.navigate(Screen.Home.route) {
+            popUpTo(Screen.Home.route) { inclusive = false }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -40,7 +49,11 @@ fun BatteryChargingScreen(navController: NavController) {
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { 
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = false }
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
                 },
@@ -155,7 +168,17 @@ fun BatteryChargingScreen(navController: NavController) {
                         )
                         MetricCard(
                             icon = Icons.Default.Settings,
-                            value = "3010mAh",
+                            value = if (info.current != 0) {
+                                // Current is in microamperes (μA), convert to milliamperes (mA)
+                                val currentMa = kotlin.math.abs(info.current) / 1000.0
+                                if (currentMa >= 1000) {
+                                    String.format("%.2fA", currentMa / 1000.0)
+                                } else {
+                                    String.format("%.0fmA", currentMa)
+                                }
+                            } else {
+                                "N/A"
+                            },
                             label = "Power",
                             color = Color(0xFF2196F3)
                         )
@@ -234,7 +257,13 @@ fun BatteryChargingScreen(navController: NavController) {
                     BatteryInfoRow(
                         icon = Icons.Default.Settings,
                         label = "Battery Capacity",
-                        value = "3010mAh"
+                        value = if (info.capacity > 0) {
+                            // Capacity is in microampere-hours (μAh), convert to milliampere-hours (mAh)
+                            val capacityMah = info.capacity / 1000
+                            "${capacityMah}mAh"
+                        } else {
+                            "N/A"
+                        }
                     )
                 }
                 

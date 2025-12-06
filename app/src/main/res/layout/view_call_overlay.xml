@@ -11,6 +11,7 @@
 
     <!-- Blue Banner Section -->
     <LinearLayout
+        android:id="@+id/banner_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -130,6 +131,7 @@
 
         <!-- Divider -->
         <View
+            android:id="@+id/divider"
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:background="#E0E0E0"
@@ -138,6 +140,7 @@
 
         <!-- Action Buttons Row -->
         <LinearLayout
+            android:id="@+id/action_buttons_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"

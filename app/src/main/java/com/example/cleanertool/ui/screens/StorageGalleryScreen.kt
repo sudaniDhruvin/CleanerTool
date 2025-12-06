@@ -20,10 +20,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.example.cleanertool.navigation.Screen
 import com.example.cleanertool.viewmodel.StorageViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -69,6 +71,13 @@ fun StorageGalleryScreen(navController: NavController) {
         }
     }
 
+    // Handle hardware back button - navigate to Home instead of scanning screen
+    BackHandler {
+        navController.navigate(Screen.Home.route) {
+            popUpTo(Screen.Home.route) { inclusive = false }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -80,7 +89,11 @@ fun StorageGalleryScreen(navController: NavController) {
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { 
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = false }
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
                 },

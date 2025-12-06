@@ -20,7 +20,9 @@ data class BatteryInfo(
     val temperature: Float,
     val voltage: Int,
     val technology: String,
-    val chargingStatus: String
+    val chargingStatus: String,
+    val current: Int, // Current in microamperes (μA)
+    val capacity: Long // Battery capacity in microampere-hours (μAh)
 )
 
 class BatteryViewModel(application: Application) : AndroidViewModel(application) {
@@ -78,6 +80,55 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             val temperature = it.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) / 10f
             val voltage = it.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1)
             val technology = it.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY) ?: "Unknown"
+            
+            // Get battery capacity and current using BatteryManager properties
+            val batteryManager = getApplication<Application>().getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            
+            // Get current (power) using BatteryManager properties (API 21+)
+            val current = try {
+                // Try to get current now first
+                val currentNow = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                if (currentNow != Integer.MIN_VALUE) {
+                    currentNow
+                } else {
+                    // Fallback to average current
+                    val currentAvg = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE)
+                    if (currentAvg != Integer.MIN_VALUE) {
+                        currentAvg
+                    } else {
+                        0
+                    }
+                }
+            } catch (e: Exception) {
+                0
+            }
+            val capacity = try {
+                // Try to get charge counter (remaining charge in microampere-hours)
+                val chargeCounter = batteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER)
+                if (chargeCounter > 0 && batteryPct > 0) {
+                    // Calculate full capacity: chargeCounter / (batteryPct / 100)
+                    // This gives us the full battery capacity in microampere-hours (μAh)
+                    (chargeCounter * 100 / batteryPct)
+                } else {
+                    // If charge counter is not available, try to read from energy counter
+                    try {
+                        val energyCounter = batteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER)
+                        if (energyCounter > 0 && batteryPct > 0 && voltage > 0) {
+                            // Energy counter is in nanowatt-hours, convert to μAh
+                            // Energy (nWh) = Voltage (mV) * Charge (μAh) / 1000
+                            // So Charge (μAh) = Energy (nWh) * 1000 / Voltage (mV)
+                            val currentCharge = (energyCounter * 1000 / voltage)
+                            (currentCharge * 100 / batteryPct)
+                        } else {
+                            0L
+                        }
+                    } catch (e2: Exception) {
+                        0L
+                    }
+                }
+            } catch (e: Exception) {
+                0L
+            }
 
             val chargingStatusString = when (status) {
                 BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
@@ -94,7 +145,9 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 temperature = temperature,
                 voltage = voltage,
                 technology = technology,
-                chargingStatus = chargingStatusString
+                chargingStatus = chargingStatusString,
+                current = current,
+                capacity = capacity
             )
         }
     }
