@@ -135,12 +135,11 @@ fun HomeScreen(navController: NavController) {
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
-            
             // Junk Cleaner button
             Card(
                 onClick = { navController.navigate(Screen.Scan.route) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color.White
