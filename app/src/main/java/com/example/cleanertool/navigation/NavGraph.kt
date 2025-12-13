@@ -1,15 +1,31 @@
 package com.example.cleanertool.navigation
 
+import android.app.Activity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.cleanertool.ads.AppOpenAdManager
+import com.example.cleanertool.ads.NavigationAdInterceptor
 import com.example.cleanertool.ui.screens.*
 
 @Composable
 fun NavGraph(navController: NavHostController) {
+    val context = LocalContext.current
+    val activity = context as? Activity
+    
+    // Setup navigation ad interceptor for app open ads
+    LaunchedEffect(navController) {
+        activity?.let {
+            val appOpenAdManager = AppOpenAdManager.getInstance(context.applicationContext as android.app.Application)
+            val interceptor = NavigationAdInterceptor(appOpenAdManager, it)
+            interceptor.setupNavigationListener(navController)
+        }
+    }
     NavHost(
         navController = navController,
         startDestination = Screen.Landing.route

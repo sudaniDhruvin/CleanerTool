@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.example.cleanertool.utils.PermissionUtils
@@ -202,6 +203,15 @@ fun PhotoPermissionScreen(navController: NavController) {
                         color = Color.White
                     )
                 }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                // Banner Ad
+                BannerAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
             }
         }
     }

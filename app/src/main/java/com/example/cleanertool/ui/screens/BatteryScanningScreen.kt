@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
 import kotlinx.coroutines.delay
 
 @Composable
@@ -232,6 +233,15 @@ fun BatteryScanningScreen(navController: NavController) {
             }
             
             Spacer(modifier = Modifier.weight(1f))
+            
+            // Banner Ad
+            BannerAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 0.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

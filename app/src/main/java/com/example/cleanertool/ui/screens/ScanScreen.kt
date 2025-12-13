@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
 import com.example.cleanertool.viewmodel.FileType
 import com.example.cleanertool.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
@@ -281,6 +282,14 @@ fun ScanScreen(navController: NavController) {
                                 selectedCategories + FileType.LOG
                             }
                         }
+                    )
+                    
+                    // Banner Ad
+                    Spacer(modifier = Modifier.height(16.dp))
+                    BannerAdView(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                     )
                     
                     // Add bottom padding to prevent content from being cut off by button

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
 import com.example.cleanertool.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -180,6 +181,14 @@ fun HomeScreen(navController: NavController) {
                     )
                 }
             }
+            
+            // Banner Ad at the bottom
+            Spacer(modifier = Modifier.height(16.dp))
+            BannerAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 0.dp)
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
         }

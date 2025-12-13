@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.rememberNavController
+import com.example.cleanertool.ads.AppOpenAdManager
 import com.example.cleanertool.navigation.NavGraph
 import com.example.cleanertool.receivers.BatteryBroadcastReceiver
 import com.example.cleanertool.receivers.UninstallReceiver
@@ -29,6 +30,7 @@ import com.example.cleanertool.utils.NotificationManager
 import com.example.cleanertool.utils.OverlayPermission
 
 class MainActivity : ComponentActivity() {
+    private lateinit var appOpenAdManager: AppOpenAdManager
     private lateinit var batteryReceiver: BatteryBroadcastReceiver
     private lateinit var uninstallReceiver: UninstallReceiver
 
@@ -83,6 +85,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize App Open Ad Manager
+        appOpenAdManager = AppOpenAdManager.getInstance(application)
 
         // Request storage permissions (other permissions will be requested after storage permissions are handled)
         requestStoragePermissions()
