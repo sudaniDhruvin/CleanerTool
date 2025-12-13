@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -43,6 +45,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.viewmodel.EmptyFolder
 import com.example.cleanertool.viewmodel.EmptyFoldersViewModel
 
@@ -100,14 +104,35 @@ fun EmptyFoldersScreen(navController: NavController) {
             isScanning -> LoadingIndicator(message = "Looking for empty folders…")
             error != null -> ErrorState(message = error ?: "Unknown error")
             folders.isEmpty() -> EmptyState()
-            else -> FolderList(
-                paddingValues = paddingValues,
-                folders = folders,
-                selected = selected,
-                onToggle = { path ->
-                    selected = if (selected.contains(path)) selected - path else selected + path
-                }
-            )
+            else -> Column(modifier = Modifier.fillMaxSize()) {
+                FolderList(
+                    paddingValues = PaddingValues(0.dp),
+                    folders = folders,
+                    selected = selected,
+                    onToggle = { path ->
+                        selected = if (selected.contains(path)) selected - path else selected + path
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                
+                // Native Ad
+                Spacer(modifier = Modifier.height(16.dp))
+                NativeAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                
+                // Banner Ad
+                Spacer(modifier = Modifier.height(8.dp))
+                BannerAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
@@ -117,12 +142,11 @@ private fun FolderList(
     paddingValues: PaddingValues,
     folders: List<EmptyFolder>,
     selected: Set<String>,
-    onToggle: (String) -> Unit
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues),
+        modifier = modifier.padding(paddingValues),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {

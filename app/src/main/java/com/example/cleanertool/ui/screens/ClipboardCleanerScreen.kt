@@ -6,8 +6,10 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBox
@@ -41,6 +43,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,6 +143,22 @@ fun ClipboardCleanerScreen(navController: NavController) {
                 Icon(Icons.Default.AccountBox, contentDescription = null, tint = Color.White, modifier = Modifier.padding(end = 8.dp))
                 Text("Copy clean version", color = Color.White, fontWeight = FontWeight.Bold)
             }
+            
+            // Native Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            NativeAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
+            
+            // Banner Ad
+            Spacer(modifier = Modifier.height(8.dp))
+            BannerAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
         }
     }
 }

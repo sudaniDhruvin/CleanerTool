@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import java.util.Calendar
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -172,6 +174,24 @@ fun SettingsMenuScreen(navController: NavController) {
                     title = "Rate Us 5 Star",
                     onClick = { navController.navigate("rate_us") }
                 )
+                
+                // Native Ad
+                Spacer(modifier = Modifier.height(16.dp))
+                NativeAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+                
+                // Banner Ad
+                Spacer(modifier = Modifier.height(16.dp))
+                BannerAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }

@@ -86,8 +86,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize App Open Ad Manager
+        // Initialize App Open Ad Manager early
         appOpenAdManager = AppOpenAdManager.getInstance(application)
+        // Pre-load app open ad
+        appOpenAdManager.loadAd()
 
         // Request storage permissions (other permissions will be requested after storage permissions are handled)
         requestStoragePermissions()

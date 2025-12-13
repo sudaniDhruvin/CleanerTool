@@ -41,9 +41,11 @@ class AppOpenAdManager(private val application: Application) : DefaultLifecycleO
     
     fun loadAd() {
         if (isLoadingAd || isAdAvailable()) {
+            Log.d("AppOpenAd", "Skipping load: isLoadingAd=$isLoadingAd, isAdAvailable=${isAdAvailable()}")
             return
         }
         
+        Log.d("AppOpenAd", "Loading app open ad with unit ID: $AD_UNIT_ID")
         isLoadingAd = true
         val request = AdRequest.Builder().build()
         
@@ -54,14 +56,20 @@ class AppOpenAdManager(private val application: Application) : DefaultLifecycleO
             AppOpenAd.APP_OPEN_AD_ORIENTATION_PORTRAIT,
             object : AppOpenAd.AppOpenAdLoadCallback() {
                 override fun onAdLoaded(ad: AppOpenAd) {
-                    Log.d("AppOpenAd", "Ad was loaded.")
+                    Log.d("AppOpenAd", "App open ad loaded successfully")
                     appOpenAd = ad
                     isLoadingAd = false
                 }
                 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    Log.d("AppOpenAd", "Ad failed to load: ${loadAdError.message}")
+                    Log.e("AppOpenAd", "App open ad failed to load: ${loadAdError.message}, code: ${loadAdError.code}")
                     isLoadingAd = false
+                    // Retry loading after a delay
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        if (!isAdAvailable() && !isLoadingAd) {
+                            loadAd()
+                        }
+                    }, 30000) // Retry after 30 seconds
                 }
             }
         )
@@ -72,36 +80,51 @@ class AppOpenAdManager(private val application: Application) : DefaultLifecycleO
     }
     
     fun showAdIfAvailable(activity: Activity) {
+        Log.d("AppOpenAd", "showAdIfAvailable called, isShowingAd: $isShowingAd, isAdAvailable: ${isAdAvailable()}")
+        
         if (isShowingAd) {
             Log.d("AppOpenAd", "The app open ad is already showing.")
             return
         }
         
         if (!isAdAvailable()) {
-            Log.d("AppOpenAd", "The app open ad is not ready yet.")
+            Log.d("AppOpenAd", "The app open ad is not ready yet. Loading new ad...")
             loadAd()
             return
         }
         
+        Log.d("AppOpenAd", "Showing app open ad on activity: ${activity.javaClass.simpleName}")
+        
         appOpenAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdDismissedFullScreenContent() {
+                Log.d("AppOpenAd", "App open ad dismissed")
                 appOpenAd = null
                 isShowingAd = false
                 loadAd()
             }
             
             override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                Log.e("AppOpenAd", "App open ad failed to show: ${adError.message}")
                 appOpenAd = null
                 isShowingAd = false
                 loadAd()
             }
             
             override fun onAdShowedFullScreenContent() {
+                Log.d("AppOpenAd", "App open ad showed successfully")
                 isShowingAd = true
             }
         }
         
-        appOpenAd?.show(activity)
+        try {
+            appOpenAd?.show(activity)
+            lastAdShowTime = System.currentTimeMillis()
+        } catch (e: Exception) {
+            Log.e("AppOpenAd", "Exception showing ad: ${e.message}", e)
+            appOpenAd = null
+            isShowingAd = false
+            loadAd()
+        }
     }
     
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -133,20 +156,26 @@ class AppOpenAdManager(private val application: Application) : DefaultLifecycleO
     // Track if app was in background
     private var wasInBackground = false
     private var isFirstStart = true
+    private var lastAdShowTime = 0L
+    private val MIN_TIME_BETWEEN_ADS = 60000L // 1 minute minimum between ads
     
     override fun onStart(owner: LifecycleOwner) {
         super.onStart(owner)
-        // Show app open ad when app comes to foreground or on first start
+        // Show app open ad when app comes to foreground (but not on first start - let navigation handle that)
         currentActivity?.let { 
             Log.d("AppOpenAd", "App started, currentActivity: ${it.javaClass.simpleName}, isFirstStart: $isFirstStart, wasInBackground: $wasInBackground")
-            if (isFirstStart || wasInBackground) {
-                isFirstStart = false
-                wasInBackground = false
-                // Small delay to ensure activity is fully ready
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    showAdIfAvailable(it)
-                }, 500)
+            // Only show on foreground if app was in background (not first start)
+            if (wasInBackground && !isFirstStart) {
+                val timeSinceLastAd = System.currentTimeMillis() - lastAdShowTime
+                if (timeSinceLastAd >= MIN_TIME_BETWEEN_ADS) {
+                    wasInBackground = false
+                    // Small delay to ensure activity is fully ready
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        showAdIfAvailable(it)
+                    }, 500)
+                }
             }
+            isFirstStart = false
         }
     }
     

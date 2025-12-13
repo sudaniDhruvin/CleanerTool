@@ -3,8 +3,10 @@ package com.example.cleanertool.ui.screens
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -36,6 +38,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -123,6 +127,22 @@ fun LinkCleanerScreen(navController: NavController) {
                 Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.padding(end = 8.dp))
                 Text("Copy clean link", color = Color.White, fontWeight = FontWeight.Bold)
             }
+            
+            // Native Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            NativeAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
+            
+            // Banner Ad
+            Spacer(modifier = Modifier.height(8.dp))
+            BannerAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
         }
     }
 }

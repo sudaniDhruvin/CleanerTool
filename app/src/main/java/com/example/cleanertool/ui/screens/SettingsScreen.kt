@@ -23,6 +23,8 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.example.cleanertool.utils.PermissionUtils
 import com.example.cleanertool.utils.SettingsPreferencesManager
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -135,6 +137,22 @@ fun SettingsScreen(navController: NavController) {
                     }
                 )
             }
+            
+            // Native Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            NativeAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+            
+            // Banner Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            BannerAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
         }

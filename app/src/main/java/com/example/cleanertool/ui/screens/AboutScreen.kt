@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -147,6 +149,22 @@ fun AboutScreen(navController: NavController) {
                     )
                 }
             }
+            
+            // Native Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            NativeAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+            
+            // Banner Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            BannerAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
             
             Spacer(modifier = Modifier.height(32.dp))
         }

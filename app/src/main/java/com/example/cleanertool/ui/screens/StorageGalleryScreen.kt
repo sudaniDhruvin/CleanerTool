@@ -25,6 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.navigation.Screen
 import com.example.cleanertool.viewmodel.StorageViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -205,13 +207,33 @@ fun StorageGalleryScreen(navController: NavController) {
                             }
                         }
                     } else {
-                        ImageGrid(
-                            images = sortedImages,
-                            viewModel = viewModel,
-                            navController = navController,
-                            selectedTab = selectedTab,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            ImageGrid(
+                                images = sortedImages,
+                                viewModel = viewModel,
+                                navController = navController,
+                                selectedTab = selectedTab,
+                                modifier = Modifier.weight(1f)
+                            )
+                            
+                            // Native Ad
+                            Spacer(modifier = Modifier.height(16.dp))
+                            NativeAdView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            
+                            // Banner Ad
+                            Spacer(modifier = Modifier.height(8.dp))
+                            BannerAdView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
                     }
                 }
             }

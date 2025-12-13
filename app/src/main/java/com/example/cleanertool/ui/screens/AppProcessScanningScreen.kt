@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.navigation.Screen
 import kotlinx.coroutines.delay
 
@@ -287,7 +288,15 @@ fun AppProcessScanningScreen(navController: NavController) {
             
             Spacer(modifier = Modifier.weight(1f))
             
+            // Native Ad
+            NativeAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+            
             // Banner Ad
+            Spacer(modifier = Modifier.height(16.dp))
             BannerAdView(
                 modifier = Modifier
                     .fillMaxWidth()

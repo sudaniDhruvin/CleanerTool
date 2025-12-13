@@ -4,8 +4,10 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.viewmodel.ScanViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,10 +137,31 @@ fun DuplicateCleanerScreen(navController: NavController) {
         when {
             isScanning -> LoadingState(paddingValues = paddingValues, message = "Scanning your storage…")
             duplicateGroups.isEmpty() -> EmptyState(paddingValues = paddingValues)
-            else -> DuplicateList(
-                paddingValues = paddingValues,
-                duplicateGroups = duplicateGroups
-            )
+            else -> Column(modifier = Modifier.fillMaxSize()) {
+                DuplicateList(
+                    paddingValues = PaddingValues(0.dp),
+                    duplicateGroups = duplicateGroups,
+                    modifier = Modifier.weight(1f)
+                )
+                
+                // Native Ad
+                Spacer(modifier = Modifier.height(16.dp))
+                NativeAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                
+                // Banner Ad
+                Spacer(modifier = Modifier.height(8.dp))
+                BannerAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
@@ -190,12 +215,11 @@ private fun EmptyState(paddingValues: PaddingValues) {
 @Composable
 private fun DuplicateList(
     paddingValues: PaddingValues,
-    duplicateGroups: List<List<com.example.cleanertool.viewmodel.UnnecessaryFile>>
+    duplicateGroups: List<List<com.example.cleanertool.viewmodel.UnnecessaryFile>>,
+    modifier: Modifier = Modifier
 ) {
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues),
+        modifier = modifier.padding(paddingValues),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

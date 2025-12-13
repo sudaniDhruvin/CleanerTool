@@ -97,6 +97,12 @@ dependencies {
     // AdMob
     implementation(libs.play.services.ads)
     
+    // Shimmer effect for loading states
+    implementation("com.facebook.shimmer:shimmer:0.5.0")
+    
+    // CardView for native ad layouts
+    implementation("androidx.cardview:cardview:1.0.0")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

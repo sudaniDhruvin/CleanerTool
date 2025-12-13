@@ -27,6 +27,8 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.cleanertool.viewmodel.AppManagementViewModel
+import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,6 +152,30 @@ fun AppManagementScreen(navController: NavController) {
                                 viewModel = viewModel,
                                 context = context
                             )
+                        }
+                        
+                        // Native Ad
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            NativeAdView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            )
+                        }
+                        
+                        // Banner Ad
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            BannerAdView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            )
+                        }
+                        
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }

@@ -31,6 +31,7 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.navigation.Screen
 import com.example.cleanertool.utils.RamUtils
 import com.example.cleanertool.utils.UsageStatsUtils
@@ -215,6 +216,14 @@ fun RamProcessScreen(navController: NavController) {
                             }
                         }
                     }
+                    
+                    // Native Ad
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NativeAdView(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    )
                     
                     // Banner Ad
                     Spacer(modifier = Modifier.height(16.dp))

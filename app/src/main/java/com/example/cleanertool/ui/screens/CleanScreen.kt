@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.viewmodel.FileType
 import com.example.cleanertool.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
@@ -320,6 +321,14 @@ fun CleanScreen(navController: NavController) {
                     }
                 }
             }
+            
+            // Native Ad
+            Spacer(modifier = Modifier.height(16.dp))
+            NativeAdView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
             
             // Banner Ad
             Spacer(modifier = Modifier.height(16.dp))

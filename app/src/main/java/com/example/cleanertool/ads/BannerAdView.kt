@@ -32,7 +32,7 @@ fun BannerAdView(
     
     val adView = remember {
         AdView(context).apply {
-            setAdSize(AdSize.BANNER)
+            setAdSize(AdSize.LARGE_BANNER)
             this.adUnitId = finalAdUnitId
             
             adListener = object : AdListener() {
@@ -79,7 +79,7 @@ fun BannerAdView(
         },
         modifier = modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(100.dp)
     )
 }
 

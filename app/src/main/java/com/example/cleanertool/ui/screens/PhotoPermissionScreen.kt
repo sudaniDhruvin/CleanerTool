@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.cleanertool.ads.BannerAdView
+import com.example.cleanertool.ads.NativeAdView
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.example.cleanertool.utils.PermissionUtils
@@ -206,7 +207,15 @@ fun PhotoPermissionScreen(navController: NavController) {
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
+                // Native Ad
+                NativeAdView(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
+                
                 // Banner Ad
+                Spacer(modifier = Modifier.height(16.dp))
                 BannerAdView(
                     modifier = Modifier
                         .fillMaxWidth()
