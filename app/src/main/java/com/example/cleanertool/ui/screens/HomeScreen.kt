@@ -25,28 +25,13 @@ import com.example.cleanertool.navigation.Screen
 @Composable
 fun HomeScreen(navController: NavController) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Red background section (upper half)
-        Box(
+        // Orange background section (upper half)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.5f)
                 .background(Color(0xFFFF5722))
-        )
-        
-        // White background section (lower half)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.5f)
-                .align(Alignment.BottomCenter)
-                .background(Color.White)
-        )
-        
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
                 .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
         ) {
             // Top spacing for status bar
             Spacer(modifier = Modifier.height(48.dp))
@@ -102,7 +87,7 @@ fun HomeScreen(navController: NavController) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 24.dp),
+                    .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 // Outer ring with red gradient border
@@ -134,56 +119,25 @@ fun HomeScreen(navController: NavController) {
                     )
                 }
             }
-            
-            // Junk Cleaner button
-            Card(
-                onClick = { navController.navigate(Screen.Scan.route) },
-                modifier = Modifier
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = null,
-                            tint = Color.Black
-                        )
-                        Text(
-                            text = "Junk Cleaner",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = null,
-                        tint = Color.Black
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(32.dp))
+        }
+        
+        // White background section (lower half)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.5f)
+                .align(Alignment.BottomCenter)
+                .background(Color.White)
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Top spacing to account for Junk Cleaner button
+            Spacer(modifier = Modifier.height(40.dp))
             
             // More Tools section
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.White)
                     .padding(vertical = 24.dp)
             ) {
                 Text(
@@ -228,6 +182,50 @@ fun HomeScreen(navController: NavController) {
             }
             
             Spacer(modifier = Modifier.height(24.dp))
+        }
+        
+        // Junk Cleaner button - centered between orange and white views
+        Card(
+            onClick = { navController.navigate(Screen.Scan.route) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center)
+                .padding(horizontal = 24.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = Color.Black
+                    )
+                    Text(
+                        text = "Junk Cleaner",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ArrowForward,
+                    contentDescription = null,
+                    tint = Color.Black
+                )
+            }
         }
     }
 }
