@@ -199,6 +199,8 @@ fun HomeScreen(navController: NavController) {
                     .padding(horizontal = 0.dp)
             )
             
+            
+            
             Spacer(modifier = Modifier.height(24.dp))
         }
         

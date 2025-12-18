@@ -88,8 +88,7 @@ class MainActivity : ComponentActivity() {
 
         // Initialize App Open Ad Manager early
         appOpenAdManager = AppOpenAdManager.getInstance(application)
-        // Pre-load app open ad
-        appOpenAdManager.loadAd()
+        // Ad will be loaded after MobileAds initialization in CleanerToolApplication
 
         // Request storage permissions (other permissions will be requested after storage permissions are handled)
         requestStoragePermissions()

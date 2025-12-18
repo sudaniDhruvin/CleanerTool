@@ -19,11 +19,14 @@ fun NavGraph(navController: NavHostController) {
     val activity = context as? Activity
     
     // Setup navigation ad interceptor for app open ads
-    LaunchedEffect(navController) {
-        activity?.let {
+    LaunchedEffect(Unit) {
+        activity?.let { act ->
             val appOpenAdManager = AppOpenAdManager.getInstance(context.applicationContext as android.app.Application)
-            val interceptor = NavigationAdInterceptor(appOpenAdManager, it)
+            val interceptor = NavigationAdInterceptor(appOpenAdManager, act)
             interceptor.setupNavigationListener(navController)
+            android.util.Log.d("NavGraph", "Navigation ad interceptor set up for activity: ${act.javaClass.simpleName}")
+        } ?: run {
+            android.util.Log.w("NavGraph", "Activity is null, cannot set up navigation ad interceptor")
         }
     }
     NavHost(
