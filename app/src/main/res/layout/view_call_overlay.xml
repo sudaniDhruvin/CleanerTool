@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root_overlay"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@android:color/transparent"
-    android:elevation="16dp"
-    android:layout_marginHorizontal="16dp"
-    android:layout_marginTop="16dp">
+    android:foregroundGravity="center"
+    android:paddingTop="12dp"
+    android:paddingHorizontal="16dp">
+
+    <!-- Overlay content container (kept mostly as before) -->
+    <LinearLayout
+        android:id="@+id/root_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@android:color/transparent"
+        android:elevation="16dp">
 
     <!-- Blue Banner Section -->
     <LinearLayout
@@ -240,6 +246,12 @@
                     android:layout_marginTop="4dp" />
             </LinearLayout>
         </LinearLayout>
+
+        <!-- (removed bottom text button - using floating circular close icon instead) -->
     </LinearLayout>
 
-</LinearLayout>
+    </LinearLayout>
+
+    <!-- Floating close icon is now managed separately by WindowManager (see CallOverlayService) -->
+
+</FrameLayout>

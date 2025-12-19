@@ -48,6 +48,8 @@ class CallOverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private var overlayAdView: AdView? = null
+    private var floatingCloseView: ImageView? = null
+    private var floatingCloseParams: WindowManager.LayoutParams? = null
     private var timeUpdateHandler: Handler? = null
     private var timeUpdateRunnable: Runnable? = null
     private var callEndTimestamp: Long = System.currentTimeMillis()
@@ -208,6 +210,8 @@ class CallOverlayService : Service() {
             }
             
             windowManager?.addView(overlayView, params)
+            // Create floating close button outside the overlay frame via WindowManager
+            createFloatingCloseView()
             Log.d(TAG, "Overlay shown successfully. Mode: $mode, Name: $contactName, Number: $phoneNumber")
             Log.d(TAG, "Overlay will stay visible until user clicks close button (X icon)")
         } catch (e: Exception) {
@@ -403,6 +407,7 @@ class CallOverlayService : Service() {
     private fun setupClickListeners(primaryText: String?, mode: String) {
         // Close button in banner - ONLY this button closes the overlay
         val closeBanner = overlayView?.findViewById<ImageView>(R.id.btn_close_banner)
+        // Floating close button is now a separate WindowManager view (createFloatingCloseView())
         
         // Ensure it's clickable and can receive touch events
         closeBanner?.isClickable = true
@@ -410,7 +415,7 @@ class CallOverlayService : Service() {
         closeBanner?.isEnabled = true
         
         // Primary click listener - this is the main way to close
-        closeBanner?.setOnClickListener { view ->
+        closeBanner?.setOnClickListener {
             Log.d(TAG, "Close button onClick - user explicitly closing overlay")
             removeOverlay()
         }
@@ -433,6 +438,11 @@ class CallOverlayService : Service() {
                 else -> false
             }
         }
+
+        // (bottom text close button removed; floating icon provides close action)
+
+        // Touch feedback for floating close button (slightly different alpha to feel like an icon)
+        // Touch feedback for floating close button is handled in createFloatingCloseView()
 
         // Primary action button (View/Clean) - Opens action and closes overlay
         val primaryActionBtn = overlayView?.findViewById<Button>(R.id.btn_primary_action)
@@ -655,6 +665,8 @@ class CallOverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "CallOverlayService onDestroy called - service is being destroyed")
+        // Ensure floating close view is removed if service is being destroyed
+        removeFloatingCloseView()
         try {
             if (overlayView != null) {
                 Log.d(TAG, "Removing overlay view in onDestroy")
@@ -683,6 +695,8 @@ class CallOverlayService : Service() {
     
     private fun removeOverlay() {
         Log.d(TAG, "removeOverlay called - user explicitly closing overlay")
+        // Remove the floating close view first (it's a separate WindowManager view)
+        removeFloatingCloseView()
         try {
             if (overlayView != null) {
                 try {
@@ -748,19 +762,40 @@ class CallOverlayService : Service() {
                 // Keep a small horizontal margin so the ad doesn't touch or get clipped by edges
                 val sideMarginDp = 8 // 8dp margin on both sides
                 val sideMarginPx = (sideMarginDp * density).toInt()
-                val adWidthPx = Math.max(1, availableWidthPx - (2 * sideMarginPx))
-                val adWidthDp = Math.max(1, (adWidthPx / density).toInt())
-                Log.d(TAG, "Overlay ad container measured width=${availableWidthPx}px (density=${String.format("%.2f", density)}), sideMargin=${sideMarginDp}dp/${sideMarginPx}px, using ${adWidthDp}dp (${adWidthPx}px) for adaptive size")
 
-                val adaptiveSize = com.google.android.gms.ads.AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(this, adWidthDp)
-                Log.d(TAG, "Using adaptive ad size: ${adaptiveSize.width}x${adaptiveSize.height}")
-                adViewLocal.setAdSize(adaptiveSize)
+                // Consider showing a square Medium Rectangle (MREC: 300x250 dp) if space allows
+                val mrecDpW = 300
+                val mrecDpH = 250
+                val mrecPxW = (mrecDpW * density).toInt()
+                val mrecPxH = (mrecDpH * density).toInt()
+                val screenHeight = resources.displayMetrics.heightPixels
 
-                // Add to container now that size is set. Use explicit pixel width to avoid stretching
-                val lp = FrameLayout.LayoutParams(adWidthPx, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
+                // If MREC fits horizontally (plus margins) and is not too tall for the screen, prefer it
+                if (availableWidthPx >= mrecPxW + (2 * sideMarginPx) && mrecPxH < screenHeight / 2) {
+                    Log.d(TAG, "Overlay container width=${availableWidthPx}px, enough for MREC ${mrecDpW}x${mrecDpH}dp (${mrecPxW}x${mrecPxH}px). Using MEDIUM_RECTANGLE.")
+                    val mrecSize = com.google.android.gms.ads.AdSize.MEDIUM_RECTANGLE
+                    adViewLocal.setAdSize(mrecSize)
+
+                    val lp = FrameLayout.LayoutParams(mrecPxW, mrecPxH).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                    }
+                    container.addView(adViewLocal, lp)
+                } else {
+                    // Fallback to anchored adaptive banner that matches available width
+                    val adWidthPx = Math.max(1, availableWidthPx - (2 * sideMarginPx))
+                    val adWidthDp = Math.max(1, (adWidthPx / density).toInt())
+                    Log.d(TAG, "Overlay ad container measured width=${availableWidthPx}px (density=${String.format("%.2f", density)}), sideMargin=${sideMarginDp}dp/${sideMarginPx}px, using ${adWidthDp}dp (${adWidthPx}px) for adaptive size")
+
+                    val adaptiveSize = com.google.android.gms.ads.AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(this, adWidthDp)
+                    Log.d(TAG, "Using adaptive ad size: ${adaptiveSize.width}x${adaptiveSize.height}")
+                    adViewLocal.setAdSize(adaptiveSize)
+
+                    // Add to container now that size is set. Use explicit pixel width to avoid stretching
+                    val lp = FrameLayout.LayoutParams(adWidthPx, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                    }
+                    container.addView(adViewLocal, lp)
                 }
-                container.addView(adViewLocal, lp)
 
                 // Load the ad
                 adViewLocal.loadAd(com.google.android.gms.ads.AdRequest.Builder().build())
@@ -772,8 +807,17 @@ class CallOverlayService : Service() {
         adViewLocal.adListener = object : com.google.android.gms.ads.AdListener() {
             override fun onAdLoaded() {
                 Log.d(TAG, "Overlay banner ad loaded")
-                // Show container once ad is loaded
-                container.post { container.visibility = View.VISIBLE }
+                // Show container once ad is loaded and position floating close relative to overlay
+                container.post {
+                    container.visibility = View.VISIBLE
+                    try {
+                        createFloatingCloseView(alignToOverlay = true)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error creating floating close view on ad load", e)
+                        // Fallback: create default floating close at bottom center
+                        createFloatingCloseView()
+                    }
+                }
             }
 
             override fun onAdFailedToLoad(error: com.google.android.gms.ads.LoadAdError) {
@@ -789,6 +833,139 @@ class CallOverlayService : Service() {
         // Keep reference so we can destroy it later
         overlayAdView = adViewLocal
     }
+
+    /**
+     * Create a floating circular close button as a separate WindowManager view so it can sit
+     * outside the bounds of the overlay's content. This is useful when the close control
+     * must not overlap the overlay card itself.
+     */
+    private fun createFloatingCloseView(alignToOverlay: Boolean = false) {
+        try {
+            if (floatingCloseView != null) return
+            val img = ImageView(this).apply {
+                setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+                setColorFilter(ContextCompat.getColor(this@CallOverlayService, android.R.color.white))
+                setBackgroundResource(R.drawable.circle_blue_background)
+                val pad = dpToPx(12)
+                setPadding(pad, pad, pad, pad)
+                isClickable = true
+                isFocusable = true
+                elevation = 18f
+                setOnClickListener {
+                    Log.d(TAG, "Floating close clicked - closing overlay")
+                    removeOverlay()
+                }
+                setOnTouchListener { view, event ->
+                    when (event.action) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            view.alpha = 0.85f
+                            false
+                        }
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                            view.alpha = 1.0f
+                            false
+                        }
+                        else -> false
+                    }
+                }
+            }
+
+            val layoutFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE
+            }
+
+            // Base params used for both overlay-aligned and fallback positions
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT
+            )
+
+            if (alignToOverlay && overlayView != null) {
+                // Defer until overlay has been laid out so we can compute its on-screen position
+                overlayView?.post {
+                    try {
+                        val loc = IntArray(2)
+                        overlayView?.getLocationOnScreen(loc)
+                        val overlayTop = loc[1]
+                        val overlayHeight = overlayView?.height ?: 0
+
+                        params.apply {
+                            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                            // Place just below overlay bottom with 24dp spacing
+                            y = overlayTop + overlayHeight + dpToPx(24)
+                        }
+
+                        try {
+                            windowManager?.addView(img, params)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to add floating close view at overlay position, falling back", e)
+                            // Fallback to bottom-center
+                            params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                            params.y = dpToPx(12)
+                            windowManager?.addView(img, params)
+                        }
+
+                        floatingCloseView = img
+                        floatingCloseParams = params
+                        Log.d(TAG, "Floating close view added to WindowManager (aligned to overlay)")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error positioning floating close relative to overlay", e)
+                        // Fallback: add to bottom center
+                        params.apply {
+                            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                            y = dpToPx(12)
+                        }
+                        windowManager?.addView(img, params)
+                        floatingCloseView = img
+                        floatingCloseParams = params
+                        Log.d(TAG, "Floating close view added to WindowManager (fallback bottom)")
+                    }
+                }
+                return
+            }
+
+            // Default fallback: bottom center with small margin
+            params.apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                y = dpToPx(12)
+            }
+
+            windowManager?.addView(img, params)
+            floatingCloseView = img
+            floatingCloseParams = params
+            Log.d(TAG, "Floating close view added to WindowManager")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating floating close view", e)
+        }
+    }
+
+    private fun removeFloatingCloseView() {
+        try {
+            floatingCloseView?.let { view ->
+                try {
+                    windowManager?.removeView(view)
+                    Log.d(TAG, "Floating close view removed from WindowManager")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error removing floating close view", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error in removeFloatingCloseView", e)
+        } finally {
+            floatingCloseView = null
+            floatingCloseParams = null
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     companion object {
         private const val TAG = "CallOverlayService"
