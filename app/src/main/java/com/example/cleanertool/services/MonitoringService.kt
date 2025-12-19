@@ -334,43 +334,69 @@ class MonitoringService : Service() {
 
     private fun notifyCallEnded(phoneNumber: String?, callDirection: CallDirection) {
         Log.d(TAG, "Call ended: $phoneNumber, direction: ${callDirection.name}")
-        
-        // If phone number is null or empty, try to get it from CallLog with retries
+
+        // If phone number is null or empty, try to get it from CallLog with retries (and show overlay when found)
         if (phoneNumber.isNullOrBlank()) {
             Log.d(TAG, "Phone number is null/empty, will try to get from CallLog with retries")
             tryGetNumberFromCallLogWithRetries(callDirection, retryCount = 0)
             return
         }
-        
-        // Phone number is available, proceed immediately
-        showCallOverlay(phoneNumber, callDirection)
+
+        // Phone number is available; attempt to read duration immediately. If a final duration (>0)
+        // is found, show overlay with it. If not, show overlay now and schedule retries that will
+        // continue until a positive duration is found (or retries exhausted).
+        val details = getLastCallDetails()
+        if (details != null && !details.number.isNullOrBlank() && numbersMatch(details.number, phoneNumber) && details.duration > 0) {
+            Log.d(TAG, "Found immediate call details for $phoneNumber (duration=${details.duration})")
+            showCallOverlay(phoneNumber, callDirection, details.duration)
+        } else {
+            Log.d(TAG, "No immediate final duration for $phoneNumber, showing overlay and scheduling duration retry")
+            // Show overlay immediately without duration
+            showCallOverlay(phoneNumber, callDirection, 0)
+            // Schedule retries to update duration when available; don't show a fallback overlay on failure
+            tryGetNumberFromCallLogWithRetries(callDirection, retryCount = 0, targetNumber = phoneNumber, showOnFailure = false)
+        }
     }
     
-    private fun tryGetNumberFromCallLogWithRetries(callDirection: CallDirection, retryCount: Int) {
-        val maxRetries = 5
-        val delays = arrayOf(500L, 1000L, 1500L, 2000L, 3000L) // Increasing delays
+    private fun tryGetNumberFromCallLogWithRetries(callDirection: CallDirection, retryCount: Int, targetNumber: String? = null, showOnFailure: Boolean = true) {
+        // Increase retry attempts and delays to allow CallLog to be populated with final duration
+        val maxRetries = 8
+        val delays = arrayOf(500L, 1000L, 1500L, 2000L, 3000L, 5000L, 7000L, 10000L) // Increasing delays up to 10s
         
         if (retryCount >= maxRetries) {
             Log.w(TAG, "Failed to get number from CallLog after $maxRetries retries")
-            showCallOverlay(null, callDirection)
+            if (showOnFailure) showCallOverlay(null, callDirection)
             return
         }
         
         val delay = if (retryCount < delays.size) delays[retryCount] else delays.last()
         
         Handler(Looper.getMainLooper()).postDelayed({
-            val finalPhoneNumber = getLastCallNumber()
-            if (!finalPhoneNumber.isNullOrBlank()) {
-                Log.d(TAG, "Got number from CallLog on retry $retryCount: $finalPhoneNumber")
-                showCallOverlay(finalPhoneNumber, callDirection)
+            val details = getLastCallDetails()
+            if (details != null && !details.number.isNullOrBlank()) {
+                Log.d(TAG, "Got number from CallLog on retry $retryCount: ${details.number} (duration: ${details.duration})")
+                // If a target number was provided, ensure it matches before updating
+                if (targetNumber == null || numbersMatch(details.number, targetNumber)) {
+                    // Only accept a positive duration as final; if duration is zero, keep retrying
+                    if (details.duration > 0) {
+                        Log.d(TAG, "Final duration available for ${details.number}: ${details.duration}s, updating overlay")
+                        showCallOverlay(details.number, callDirection, details.duration)
+                    } else {
+                        Log.d(TAG, "Duration is still zero for ${details.number} on retry $retryCount; will retry...")
+                        tryGetNumberFromCallLogWithRetries(callDirection, retryCount + 1, targetNumber, showOnFailure)
+                    }
+                } else {
+                    Log.d(TAG, "Found details for ${details.number} but waiting for target $targetNumber; retrying...")
+                    tryGetNumberFromCallLogWithRetries(callDirection, retryCount + 1, targetNumber, showOnFailure)
+                }
             } else {
                 Log.d(TAG, "CallLog read returned null on retry $retryCount, retrying...")
-                tryGetNumberFromCallLogWithRetries(callDirection, retryCount + 1)
+                tryGetNumberFromCallLogWithRetries(callDirection, retryCount + 1, targetNumber, showOnFailure)
             }
         }, delay)
     }
     
-    private fun showCallOverlay(phoneNumber: String?, callDirection: CallDirection) {
+    private fun showCallOverlay(phoneNumber: String?, callDirection: CallDirection, durationSeconds: Int = 0) {
         Log.d(TAG, "Showing call overlay for number: $phoneNumber")
         
         // Get contact name from phone number
@@ -394,6 +420,10 @@ class MonitoringService : Service() {
             putExtra(CallOverlayService.EXTRA_CONTACT_NAME, contactName)
             putExtra(CallOverlayService.EXTRA_PHONE_NUMBER, displayNumber)
             putExtra(CallOverlayService.EXTRA_CALL_DIRECTION, callDirection.name)
+            // Include call duration (seconds) if available so overlay can show it in the banner
+            putExtra(CallOverlayService.EXTRA_CALL_DURATION_SECONDS, durationSeconds)
+            // Provide the approximate call end timestamp so overlay can show elapsed time
+            putExtra(CallOverlayService.EXTRA_CALL_END_TIMESTAMP, System.currentTimeMillis())
             putExtra(CallOverlayService.EXTRA_MODE, CallOverlayService.MODE_CALL)
         }
         try {
@@ -492,6 +522,108 @@ class MonitoringService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error reading CallLog", e)
         }
+        return null
+    }
+
+    private data class CallDetails(val number: String?, val date: Long, val duration: Int)
+
+    /**
+     * Compare two phone numbers in a tolerant way: first try normalized equality, then
+     * fallback to matching on last 7 digits to tolerate formatting/country code differences.
+     */
+    private fun numbersMatch(a: String?, b: String?): Boolean {
+        if (a.isNullOrBlank() || b.isNullOrBlank()) return false
+        try {
+            val na = android.telephony.PhoneNumberUtils.normalizeNumber(a)
+            val nb = android.telephony.PhoneNumberUtils.normalizeNumber(b)
+            if (na == nb) return true
+            // Fallback: compare last 7 digits
+            val la = na.filter { it.isDigit() }
+            val lb = nb.filter { it.isDigit() }
+            val minLen = minOf(7, minOf(la.length, lb.length))
+            return la.takeLast(minLen) == lb.takeLast(minLen)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error normalizing phone numbers", e)
+            return a == b
+        }
+    }
+
+    /**
+     * Read the most recent call details (number, date, duration) using the same strategy
+     * as getLastCallNumber but returning duration as well.
+     */
+    private fun getLastCallDetails(): CallDetails? {
+        // Check if READ_CALL_LOG permission is granted
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG)
+            != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "READ_CALL_LOG permission not granted, cannot read CallLog")
+            return null
+        }
+
+        try {
+            val projection = arrayOf(
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DATE,
+                CallLog.Calls.DURATION
+            )
+
+            val currentTime = System.currentTimeMillis()
+            val twoMinutesAgo = currentTime - 120000
+
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                "${CallLog.Calls.DATE} > ?",
+                arrayOf(twoMinutesAgo.toString()),
+                "${CallLog.Calls.DATE} DESC LIMIT 1"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+                    val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
+                    val durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION)
+
+                    if (numberIndex >= 0) {
+                        val number = cursor.getString(numberIndex)
+                        val callDate = if (dateIndex >= 0) cursor.getLong(dateIndex) else 0L
+                        val duration = if (durationIndex >= 0) cursor.getInt(durationIndex) else 0
+
+                        if (!number.isNullOrBlank() && callDate > twoMinutesAgo &&
+                            (duration > 0 || callDate > currentTime - 10000)) {
+                            return CallDetails(number, callDate, duration)
+                        }
+                    }
+                }
+            }
+
+            // Fallback: return most recent call within last 5 minutes
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CallLog.Calls.DATE} DESC LIMIT 1"
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+                    val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
+                    val durationIndex = cursor.getColumnIndex(CallLog.Calls.DURATION)
+
+                    if (numberIndex >= 0) {
+                        val number = cursor.getString(numberIndex)
+                        val callDate = if (dateIndex >= 0) cursor.getLong(dateIndex) else 0L
+                        val duration = if (durationIndex >= 0) cursor.getInt(durationIndex) else 0
+
+                        if (!number.isNullOrBlank() && callDate > currentTime - 300000) {
+                            return CallDetails(number, callDate, duration)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading CallLog for details", e)
+        }
+
         return null
     }
 

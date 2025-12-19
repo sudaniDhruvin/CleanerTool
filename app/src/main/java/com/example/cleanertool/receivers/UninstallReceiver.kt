@@ -41,6 +41,8 @@ class UninstallReceiver : BroadcastReceiver() {
         val overlayIntent = Intent(context, CallOverlayService::class.java).apply {
             putExtra(CallOverlayService.EXTRA_PRIMARY_TEXT, appName)
             putExtra(CallOverlayService.EXTRA_SECONDARY_TEXT, "Tap to clean leftovers")
+            // Pass uninstall timestamp for accurate elapsed text
+            putExtra(CallOverlayService.EXTRA_CALL_END_TIMESTAMP, System.currentTimeMillis())
             putExtra(CallOverlayService.EXTRA_MODE, CallOverlayService.MODE_UNINSTALL)
         }
         context.startService(overlayIntent)

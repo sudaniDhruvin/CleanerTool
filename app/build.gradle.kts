@@ -96,6 +96,9 @@ dependencies {
     
     // AdMob
     implementation(libs.play.services.ads)
+
+    // Fragment (ensure version >= 1.3.0 for ActivityResult compatibility)
+    implementation(libs.androidx.fragment.ktx)
     
     // Shimmer effect for loading states
     implementation("com.facebook.shimmer:shimmer:0.5.0")

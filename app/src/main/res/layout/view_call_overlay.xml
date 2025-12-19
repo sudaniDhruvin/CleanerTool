@@ -48,7 +48,22 @@
                 android:layout_height="wrap_content"
                 android:text="Call ended less than 1 minute ago"
                 android:textColor="@android:color/white"
-                android:textSize="12sp" />
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <!-- Secondary line for call duration (shown when available) -->
+            <TextView
+                android:id="@+id/txt_call_duration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Duration: 0:23"
+                android:textColor="@android:color/white"
+                android:textSize="11sp"
+                android:layout_marginTop="2dp"
+                android:visibility="gone"
+                android:maxLines="1"
+                android:ellipsize="end" />
         </LinearLayout>
 
         <!-- Close Button -->
@@ -137,6 +152,15 @@
             android:background="#E0E0E0"
             android:layout_marginTop="16dp"
             android:layout_marginBottom="12dp" />
+
+        <!-- Ad Container (banner) -->
+        <FrameLayout
+            android:id="@+id/overlay_ad_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
 
         <!-- Action Buttons Row -->
         <LinearLayout
