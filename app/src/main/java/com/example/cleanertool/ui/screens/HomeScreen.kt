@@ -10,6 +10,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,17 +94,60 @@ fun HomeScreen(navController: NavController) {
                 }
             }
             
-            // Large CLEAN circle button
+            // Large CLEAN circle button (now clickable + pulsing animation)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
+                // Pulsing animation + expanding background waves
+                val infiniteTransition = rememberInfiniteTransition()
+                val scale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.05f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
+                )
+
+                // Five staggered expanding waves behind the button (darker tone)
+                val waveCount = 5
+                val waveDuration = 1600
+                val waveMaxScale = 1.8f
+                val waveDelayStep = waveDuration / waveCount
+                val waveStates = List(waveCount) { idx ->
+                    infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = waveDuration, easing = LinearOutSlowInEasing, delayMillis = idx * waveDelayStep),
+                            repeatMode = RepeatMode.Restart
+                        )
+                    )
+                }
+
+                // Expanding wave layers (behind the outer ring)
+                // Render waves from largest (furthest back) to smallest so they appear layered
+                val waveColor = Color(0xFFB71C1C) // dark red
+                for (i in waveCount - 1 downTo 0) {
+                    val w = waveStates[i].value
+                    // Slightly reduce alpha for later waves for depth
+                    val alpha = (0.22f - i * 0.03f).coerceAtLeast(0.05f)
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .scale(1f + w * waveMaxScale)
+                            .background(waveColor.copy(alpha = alpha), shape = CircleShape)
+                    )
+                }
+
                 // Outer ring with red gradient border
                 Box(
                     modifier = Modifier
                         .size(200.dp)
+                        .scale(scale)
                         .background(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -106,11 +158,14 @@ fun HomeScreen(navController: NavController) {
                             shape = CircleShape
                         )
                 )
-                // Inner white circle
+
+                // Inner white circle (clickable to trigger Junk Cleaner / Scan)
                 Box(
                     modifier = Modifier
                         .size(180.dp)
-                        .background(Color.White, shape = CircleShape),
+                        .scale(scale)
+                        .background(Color.White, shape = CircleShape)
+                        .clickable(onClick = { navController.navigate(Screen.Scan.route) }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -204,49 +259,7 @@ fun HomeScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(24.dp))
         }
         
-        // Junk Cleaner button - centered between orange and white views
-        Card(
-            onClick = { navController.navigate(Screen.Scan.route) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center)
-                .padding(horizontal = 24.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.White
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = Color.Black
-                    )
-                    Text(
-                        text = "Junk Cleaner",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.ArrowForward,
-                    contentDescription = null,
-                    tint = Color.Black
-                )
-            }
-        }
+        // Junk Cleaner card removed — functionality moved to the CLEAN circle above
     }
 }
 
