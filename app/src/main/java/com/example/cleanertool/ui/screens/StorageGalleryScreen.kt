@@ -478,17 +478,28 @@ fun ImageItem(
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            Image(
-                painter = rememberAsyncImagePainter(
-                    ImageRequest.Builder(LocalContext.current)
-                        .data(image.uri)
-                        .crossfade(true)
-                        .build()
-                ),
-                contentDescription = image.name,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+                val nameLower = image.name.lowercase()
+                if (nameLower.endsWith(".heic") || nameLower.endsWith(".heif")) {
+                    // Avoid requesting provider decode for HEIF/HEIC on some devices which may crash the media provider
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Description,
+                        contentDescription = "HEIF image",
+                        modifier = Modifier.fillMaxSize(),
+                        tint = Color.Gray
+                    )
+                } else {
+                    Image(
+                        painter = rememberAsyncImagePainter(
+                            ImageRequest.Builder(LocalContext.current)
+                                .data(image.uri)
+                                .crossfade(true)
+                                .build()
+                        ),
+                        contentDescription = image.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             
             // File size overlay
             Surface(

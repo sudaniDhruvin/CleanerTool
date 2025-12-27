@@ -10,6 +10,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import android.content.pm.PackageManager
+import kotlinx.coroutines.delay
+import android.app.Activity
+import android.widget.Toast
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -32,6 +40,38 @@ fun UninstallReminderScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         viewModel.analyzeUnusedApps(context)
+    }
+
+    // Track which package is being uninstalled so we can update UI when result comes back
+    var pendingUninstallPackage by remember { mutableStateOf<String?>(null) }
+
+    // Listen for PACKAGE_REMOVED broadcasts so we can react immediately when the system
+    // completes an uninstall (more reliable than waiting for an activity result on some devices).
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: android.content.Context?, intent: android.content.Intent?) {
+                if (intent?.action == Intent.ACTION_PACKAGE_REMOVED) {
+                    val pkg = intent.data?.schemeSpecificPart ?: return
+                    // Update VM and clear pending flag if this was the package we expected
+                    viewModel.markAppUninstalled(pkg)
+                    if (pendingUninstallPackage == pkg) {
+                        Toast.makeText(context, "App uninstalled", Toast.LENGTH_SHORT).show()
+                        pendingUninstallPackage = null
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply { addDataScheme("package") }
+        context.registerReceiver(receiver, filter)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+
+    val uninstallLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { _ ->
+        // We don't rely solely on the activity result because some devices/package installer
+        // implementations don't return a result (and may log permission errors). Instead,
+        // we'll poll for package removal (see LaunchedEffect below).
+        // Clearing pendingUninstallPackage is handled in the polling effect when removal is detected or times out.
     }
 
     Scaffold(
@@ -177,9 +217,75 @@ fun UninstallReminderScreen(navController: NavController) {
                             UnusedAppItem(
                                 unusedApp = unusedApp,
                                 viewModel = viewModel,
-                                context = context
+                                context = context,
+                                onUninstallRequested = { packageName ->
+                                    try {
+                                        pendingUninstallPackage = packageName
+                                        val intent = Intent(Intent.ACTION_UNINSTALL_PACKAGE).apply {
+                                            data = Uri.parse("package:$packageName")
+                                            // Add EXTRA_RETURN_RESULT only when we own the permission to request delete results
+                                            // (some package installers will attempt to return a result and may log errors
+                                            // if the caller doesn't hold REQUEST_DELETE_PACKAGES).
+                                            val hasRequestDelete = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                context,
+                                                android.Manifest.permission.REQUEST_DELETE_PACKAGES
+                                            ) == PackageManager.PERMISSION_GRANTED
+                                            if (hasRequestDelete) {
+                                                putExtra(Intent.EXTRA_RETURN_RESULT, true)
+                                            }
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        uninstallLauncher.launch(intent)
+                                    } catch (e: Exception) {
+                                        // Fallback to simple uninstall intent
+                                        try {
+                                            val fallback = Intent(Intent.ACTION_DELETE).apply {
+                                                data = Uri.parse("package:$packageName")
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            context.startActivity(fallback)
+                                        } catch (ex: Exception) {
+                                            Toast.makeText(context, "Unable to start uninstall", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
                             )
                         }
+                    }
+
+        // Poll for uninstall completion when a package is pending. This is more reliable across
+        // devices than depending on activity result callbacks which some system installers don't return.
+        LaunchedEffect(pendingUninstallPackage) {
+            val pkg = pendingUninstallPackage
+            if (pkg == null) return@LaunchedEffect
+
+            val pm = context.packageManager
+            // Give some devices/installer longer time to complete uninstall. Keep polling as a
+            // fallback to detect removal when activity results are not delivered.
+            val timeoutMs = 45_000L
+            val interval = 1000L
+            var elapsed = 0L
+            var removed = false
+            while (elapsed < timeoutMs) {
+                try {
+                    pm.getPackageInfo(pkg, 0)
+                    // Still installed
+                } catch (e: PackageManager.NameNotFoundException) {
+                    // Package removed
+                    removed = true
+                    break
+                }
+                kotlinx.coroutines.delay(interval)
+                elapsed += interval
+            }
+
+            if (removed) {
+                viewModel.markAppUninstalled(pkg)
+                Toast.makeText(context, "App uninstalled", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Uninstall not completed", Toast.LENGTH_SHORT).show()
+            }
+            pendingUninstallPackage = null
                     }
                 }
             }
@@ -191,7 +297,8 @@ fun UninstallReminderScreen(navController: NavController) {
 fun UnusedAppItem(
     unusedApp: com.example.cleanertool.viewmodel.UnusedApp,
     viewModel: UninstallReminderViewModel,
-    context: android.content.Context
+    context: android.content.Context,
+    onUninstallRequested: (String) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -267,25 +374,18 @@ fun UnusedAppItem(
                 }
             }
 
-            // Uninstall Button
-            IconButton(
-                onClick = {
-                    try {
-                        val intent = Intent(Intent.ACTION_DELETE).apply {
-                            data = Uri.parse("package:${unusedApp.appInfo.packageName}")
+                    // Uninstall Button - delegate to parent via callback
+                    IconButton(
+                        onClick = {
+                            onUninstallRequested(unusedApp.appInfo.packageName)
                         }
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        // Handle error
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Uninstall",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Uninstall",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
         }
     }
 }

@@ -7,12 +7,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.media.MediaScannerConnection
+import android.content.ContentUris
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.cleanertool.utils.storage.DirectoryScanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -20,6 +23,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.math.BigInteger
 import java.security.MessageDigest
+import androidx.documentfile.provider.DocumentFile
 
 data class UnnecessaryFile(
     val path: String,
@@ -30,10 +34,19 @@ data class UnnecessaryFile(
 )
 
 enum class FileType {
-    JUNK, OBSOLETE_APK, TEMP, LOG, CACHE
+    JUNK,
+    OBSOLETE_APK,
+    TEMP,
+    LOG,
+    CACHE,
+    IMAGE,
+    VIDEO,
+    DOCUMENT
 }
 
 class ScanViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val TAG = "ScanViewModel"
 
     private val _scanProgress = MutableStateFlow(0)
     val scanProgress: StateFlow<Int> = _scanProgress.asStateFlow()
@@ -60,6 +73,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         MutableStateFlow<Map<FileType, List<UnnecessaryFile>>>(emptyMap())
     val filesByCategory: StateFlow<Map<FileType, List<UnnecessaryFile>>> =
         _filesByCategory.asStateFlow()
+
+    // Emitted when deletion requires user confirmation (MediaStore delete request)
+    private val _pendingDeleteUris = kotlinx.coroutines.flow.MutableSharedFlow<List<Uri>>(extraBufferCapacity = 1)
+    val pendingDeleteUris = _pendingDeleteUris.asSharedFlow()
 
     private val _selectedCategories = MutableStateFlow<Set<FileType>>(emptySet())
     val selectedCategories: StateFlow<Set<FileType>> = _selectedCategories.asStateFlow()
@@ -97,19 +114,24 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         scanAllFilesViaMediaStore(context, allJunkFiles)
                     }
 
-                    runScanStage(FileType.JUNK, 30, "Scanning Downloads...") {
+                    runScanStage(FileType.JUNK, 25, "Scanning Downloads...") {
                         scanDownloadsViaMediaStore(context, allJunkFiles)
                     }
 
-                    runScanStage(FileType.CACHE, 45, "Scanning Images...") {
+                    // Scan for documents (pdf/docx/xlsx/txt/zip/etc.) across MediaStore Files
+                    runScanStage(FileType.DOCUMENT, 40, "Scanning Documents...") {
+                        scanDocumentsViaMediaStore(context, allJunkFiles)
+                    }
+
+                    runScanStage(FileType.IMAGE, 55, "Scanning Images...") {
                         scanImagesViaMediaStore(context, allJunkFiles)
                     }
 
-                    runScanStage(FileType.TEMP, 55, "Scanning Videos...") {
+                    runScanStage(FileType.VIDEO, 70, "Scanning Videos...") {
                         scanVideosViaMediaStore(context, allJunkFiles)
                     }
 
-                    runScanStage(FileType.TEMP, 65, "Scanning Audio...") {
+                    runScanStage(FileType.TEMP, 80, "Scanning Audio...") {
                         scanAudioViaMediaStore(context, allJunkFiles)
                     }
 
@@ -335,8 +357,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     scanLargeFilesForDebug(context, fileList)
                 }
             }
-        } catch (e: Exception) {
-            Log.e("ScanViewModel", "Error scanning all files: ${e.message}", e)
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error scanning all files: ${t.message}", t)
         }
     }
 
@@ -417,8 +439,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 Log.e("ScanViewModel", "Added ${count} large files as potential cache")
             }
-        } catch (e: Exception) {
-            Log.e("ScanViewModel", "Error in debug scan: ${e.message}")
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error in debug scan: ${t.message}", t)
         }
     }
 
@@ -480,8 +502,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 Log.e("ScanViewModel", "Added $addedCount new files from Downloads collection")
             }
-        } catch (e: Exception) {
-            Log.e("ScanViewModel", "Error scanning Downloads: ${e.message}", e)
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error scanning Downloads: ${t.message}", t)
         }
     }
 
@@ -494,23 +516,18 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.DATA
+            MediaStore.Images.Media.DATA,
+            MediaStore.Images.Media.MIME_TYPE
         )
-
-        // Look for thumbnail and temp files
-        val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ? OR " +
-                "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ? OR " +
-                "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
-        val selectionArgs = arrayOf(".thumbdata%", "%.tmp", "%.temp")
-
+        // Collect all images available via MediaStore (user requested: show all photos)
         try {
-            context.contentResolver.query(uri, projection, selection, selectionArgs, null)
+            context.contentResolver.query(uri, projection, null, null, "${MediaStore.Images.Media.DATE_MODIFIED} DESC")
                 ?.use { cursor ->
-                    Log.e("ScanViewModel", "Found ${cursor.count} image cache/temp files")
-                    processMediaStoreCursor(cursor, uri, fileList, FileType.CACHE)
+                    Log.e("ScanViewModel", "Found ${cursor.count} images in MediaStore")
+                    processMediaStoreCursor(cursor, uri, fileList, FileType.IMAGE)
                 }
-        } catch (e: Exception) {
-            Log.e("ScanViewModel", "Error scanning images: ${e.message}")
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error scanning images: ${t.message}", t)
         }
     }
 
@@ -523,21 +540,61 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DATA
+            MediaStore.Video.Media.DATA,
+            MediaStore.Video.Media.MIME_TYPE
+        )
+        // Collect all videos available via MediaStore
+        try {
+            context.contentResolver.query(uri, projection, null, null, "${MediaStore.Video.Media.DATE_MODIFIED} DESC")
+                ?.use { cursor ->
+                    Log.e("ScanViewModel", "Found ${cursor.count} videos in MediaStore")
+                    processMediaStoreCursor(cursor, uri, fileList, FileType.VIDEO)
+                }
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error scanning videos: ${t.message}", t)
+        }
+    }
+
+    // --------------------------
+    // Documents (PDF/DOC/TXT/ZIP/...)
+    // --------------------------
+    private fun scanDocumentsViaMediaStore(context: Context, fileList: MutableList<UnnecessaryFile>) {
+        val uri = MediaStore.Files.getContentUri("external")
+
+        // Find common document and archive extensions by name
+        val patterns = listOf(
+            "%.pdf", "%.doc", "%.docx", "%.ppt", "%.pptx", "%.xls", "%.xlsx", "%.txt", "%.rtf", "%.odt", "%.zip", "%.rar", "%.7z", "%.tar", "%.gz"
         )
 
-        val selection = "${MediaStore.Video.Media.DISPLAY_NAME} LIKE ? OR " +
-                "${MediaStore.Video.Media.DISPLAY_NAME} LIKE ?"
-        val selectionArgs = arrayOf("%.tmp", "%.temp")
+        val selection = patterns.joinToString(separator = " OR ") { "${MediaStore.Files.FileColumns.DISPLAY_NAME} LIKE ?" }
+        val selectionArgs = patterns.toTypedArray()
+
+        val projection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            arrayOf(
+                MediaStore.Files.FileColumns._ID,
+                MediaStore.Files.FileColumns.DISPLAY_NAME,
+                MediaStore.Files.FileColumns.SIZE,
+                MediaStore.Files.FileColumns.MIME_TYPE,
+                MediaStore.Files.FileColumns.RELATIVE_PATH
+            )
+        } else {
+            arrayOf(
+                MediaStore.Files.FileColumns._ID,
+                MediaStore.Files.FileColumns.DISPLAY_NAME,
+                MediaStore.Files.FileColumns.SIZE,
+                MediaStore.Files.FileColumns.DATA,
+                MediaStore.Files.FileColumns.MIME_TYPE
+            )
+        }
 
         try {
-            context.contentResolver.query(uri, projection, selection, selectionArgs, null)
+            context.contentResolver.query(uri, projection, selection, selectionArgs, "${MediaStore.Files.FileColumns.DATE_MODIFIED} DESC")
                 ?.use { cursor ->
-                    Log.d("ScanViewModel", "Found ${cursor.count} temp video files")
-                    processMediaStoreCursor(cursor, uri, fileList, FileType.TEMP)
+                    Log.e("ScanViewModel", "Documents matched: ${cursor.count}")
+                    processMediaStoreCursor(cursor, uri, fileList, FileType.DOCUMENT)
                 }
-        } catch (e: Exception) {
-            Log.e("ScanViewModel", "Error scanning videos: ${e.message}")
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error scanning documents: ${t.message}", t)
         }
     }
 
@@ -563,8 +620,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                     Log.d("ScanViewModel", "Found ${cursor.count} temp audio files")
                     processMediaStoreCursor(cursor, uri, fileList, FileType.TEMP)
                 }
-        } catch (e: Exception) {
-            Log.e("ScanViewModel", "Error scanning audio: ${e.message}")
+        } catch (t: Throwable) {
+            Log.e("ScanViewModel", "Error scanning audio: ${t.message}", t)
         }
     }
 
@@ -613,6 +670,20 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private fun categorizeFile(name: String): FileType? {
         val nameLower = name.lowercase()
         return when {
+            // Images
+                nameLower.endsWith(".jpg") || nameLower.endsWith(".jpeg") || nameLower.endsWith(".png") ||
+                nameLower.endsWith(".gif") || nameLower.endsWith(".webp") || nameLower.endsWith(".heic") || nameLower.endsWith(".heif") -> FileType.IMAGE
+
+            // Videos
+            nameLower.endsWith(".mp4") || nameLower.endsWith(".mkv") || nameLower.endsWith(".mov") ||
+                nameLower.endsWith(".avi") || nameLower.endsWith(".3gp") || nameLower.endsWith(".webm") -> FileType.VIDEO
+
+            // Documents / Archives
+            nameLower.endsWith(".pdf") || nameLower.endsWith(".doc") || nameLower.endsWith(".docx") ||
+                nameLower.endsWith(".ppt") || nameLower.endsWith(".pptx") || nameLower.endsWith(".xls") ||
+                nameLower.endsWith(".xlsx") || nameLower.endsWith(".txt") || nameLower.endsWith(".rtf") ||
+                nameLower.endsWith(".zip") || nameLower.endsWith(".rar") -> FileType.DOCUMENT
+
             nameLower.endsWith(".apk") -> FileType.OBSOLETE_APK
             nameLower.endsWith(".tmp") || nameLower.endsWith(".temp") -> FileType.TEMP
             nameLower.endsWith(".bak") || nameLower.endsWith(".crdownload") ||
@@ -859,7 +930,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         onProgress: (Int) -> Unit
     ) {
         if (filesToDelete.isEmpty()) {
-            onProgress(100)
+            withContext(Dispatchers.Main) { onProgress(100) }
             return
         }
 
@@ -869,6 +940,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
         val deletedPaths = mutableSetOf<String>()
         val deletedUris = mutableSetOf<Uri>()
+        val pendingUserDeleteUris = mutableSetOf<Uri>()
+
+        // Flow to notify UI when some URIs require user confirmation to delete
+        // (e.g., scoped storage on Android 11+)
+        // _pendingDeleteUris is defined below in the ViewModel scope
 
         withContext(Dispatchers.IO) {
             filesToDelete.forEachIndexed { index, file ->
@@ -878,6 +954,11 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                             val rows = context.contentResolver.delete(file.uri, null, null)
                             rows > 0
                         } catch (se: SecurityException) {
+                            // Collect URIs that require user consent so UI can prompt
+                            file.uri?.let {
+                                pendingUserDeleteUris.add(it)
+                                Log.w(TAG, "SecurityException deleting uri: $it", se)
+                            }
                             false
                         }
                     } else {
@@ -890,6 +971,27 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                         deletedSize += file.size
                         deletedPaths.add(file.path)
                         file.uri?.let { deletedUris.add(it) }
+
+                        // Ensure MediaStore / system index is updated so Gallery / Files app reflect deletion
+                        try {
+                            // If we have a path, remove MediaStore entries referencing it and trigger a rescan of parent dir
+                            val resolvedPath = file.path.ifBlank { getPathFromUri(context, file.uri) ?: "" }
+                            if (resolvedPath.isNotBlank()) {
+                                purgeMediaStoreEntryForPath(context, resolvedPath)
+                                val parent = java.io.File(resolvedPath).parent ?: resolvedPath
+                                MediaScannerConnection.scanFile(context, arrayOf(parent), null, null)
+                            } else if (file.uri != null) {
+                                // If we only have URI, attempt to resolve the path and rescan
+                                val p = getPathFromUri(context, file.uri)
+                                if (!p.isNullOrBlank()) {
+                                    purgeMediaStoreEntryForPath(context, p)
+                                    val parent = java.io.File(p).parent ?: p
+                                    MediaScannerConnection.scanFile(context, arrayOf(parent), null, null)
+                                }
+                            }
+                        } catch (t: Throwable) {
+                            android.util.Log.w(TAG, "Failed to refresh media DB for deleted file: ${file.path} / ${file.uri}", t)
+                        }
                     } else {
                         failedCount++
                     }
@@ -898,7 +1000,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val progress = ((index + 1) * 100) / filesToDelete.size
-                onProgress(progress)
+                // Ensure progress callback runs on the main thread so UI can safely show toasts/snackbars
+                withContext(Dispatchers.Main) { onProgress(progress) }
             }
         }
 
@@ -910,6 +1013,14 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         _unnecessaryFiles.value = remainingFiles
         _totalSize.value = remainingFiles.sumOf { it.size }
         _filesByCategory.value = remainingFiles.groupBy { it.type }
+
+        if (pendingUserDeleteUris.isNotEmpty()) {
+            // Notify UI that user confirmation is required for these URIs
+            viewModelScope.launch(Dispatchers.Main) {
+                Log.d(TAG, "Emitting pending delete URIs: $pendingUserDeleteUris")
+                _pendingDeleteUris.emit(pendingUserDeleteUris.toList())
+            }
+        }
     }
 
     fun getDuplicateGroups(): List<List<UnnecessaryFile>> {
@@ -935,6 +1046,218 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             .sortedByDescending { it.size }
     }
 
+    /**
+     * Attempt deletion on older OS versions where IntentSender delete flow is not available.
+     * This tries to resolve a file path from the URI and delete via File APIs when possible.
+     * Returns the list of URIs that still couldn't be removed.
+     */
+    suspend fun attemptLegacyDeletion(context: Context, uris: List<Uri>): List<Uri> = withContext(Dispatchers.IO) {
+        val remaining = mutableListOf<Uri>()
+
+        uris.forEach { uri ->
+            try {
+                // Try to resolve file path using MediaStore query
+                var path: String? = null
+                try {
+                    val projection = arrayOf(MediaStore.MediaColumns.DATA)
+                    context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                        val idx = getColumnIndexSafe(cursor, MediaStore.MediaColumns.DATA)
+                        if (idx >= 0 && cursor.moveToFirst()) {
+                            path = cursor.getString(idx)
+                        }
+                    }
+                } catch (t: Throwable) {
+                    // Ignore provider errors while trying to resolve path
+                    android.util.Log.w("ScanViewModel", "Failed to resolve file path for $uri: ${t.message}", t)
+                }
+
+                var deleted = false
+                if (!path.isNullOrEmpty()) {
+                    try {
+                        val f = File(path)
+                        if (f.exists()) {
+                            deleted = f.delete()
+                            if (deleted) {
+                                android.util.Log.d("ScanViewModel", "Legacy-delete succeeded for $path")
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        android.util.Log.w("ScanViewModel", "File delete failed for $path: ${t.message}", t)
+                    }
+                }
+
+                if (!deleted) {
+                    // Last resort: try contentResolver.delete again (some older devices allow it)
+                    try {
+                        val rows = context.contentResolver.delete(uri, null, null)
+                        deleted = rows > 0
+                        if (deleted) android.util.Log.d("ScanViewModel", "ContentResolver.delete succeeded for $uri (legacy)")
+                        // If we successfully removed via contentResolver, try to refresh media DB
+                        if (deleted) {
+                            try {
+                                val p = getPathFromUri(context, uri)
+                                if (!p.isNullOrBlank()) {
+                                    purgeMediaStoreEntryForPath(context, p)
+                                    val parent = java.io.File(p).parent ?: p
+                                    MediaScannerConnection.scanFile(context, arrayOf(parent), null, null)
+                                }
+                            } catch (_: Throwable) {
+                                // ignore
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        android.util.Log.w("ScanViewModel", "ContentResolver.delete failed for $uri: ${t.message}", t)
+                    }
+                }
+
+                if (!deleted) remaining.add(uri)
+            } catch (t: Throwable) {
+                android.util.Log.w("ScanViewModel", "Unhandled error attempting legacy delete for $uri: ${t.message}", t)
+                remaining.add(uri)
+            }
+        }
+
+        // Refresh internal state: remove any files that were removed via file deletions above
+        val currentUris = remaining.toSet()
+        val remainingFiles = _unnecessaryFiles.value.filter { file ->
+            if (file.uri != null) currentUris.contains(file.uri)
+            else File(file.path).exists()
+        }
+
+        // If files were removed by File.delete above, also attempt to purge MediaStore entries and rescan directories
+        try {
+            val removedPaths = _unnecessaryFiles.value.mapNotNull { f ->
+                val exists = if (f.uri != null) {
+                    // try resolve
+                    val p = getPathFromUri(context, f.uri)
+                    p
+                } else {
+                    if (!File(f.path).exists()) f.path else null
+                }
+                exists
+            }.filterNotNull()
+            removedPaths.forEach { p ->
+                try {
+                    purgeMediaStoreEntryForPath(context, p)
+                    MediaScannerConnection.scanFile(context, arrayOf(java.io.File(p).parent ?: p), null, null)
+                } catch (_: Throwable) {
+                }
+            }
+        } catch (_: Throwable) {
+        }
+
+        _unnecessaryFiles.value = remainingFiles
+        _totalSize.value = remainingFiles.sumOf { it.size }
+        _filesByCategory.value = remainingFiles.groupBy { it.type }
+
+        return@withContext remaining
+    }
+
+    /**
+     * Attempt deletion using a persisted SAF tree permission. This will search the selected
+     * folder tree for files matching the display name (and size when possible) and delete them.
+     * Returns list of URIs that still couldn't be deleted.
+     */
+    suspend fun attemptSafDeletionWithTree(context: Context, treeUri: Uri, uris: List<Uri>): List<Uri> = withContext(Dispatchers.IO) {
+        val remaining = mutableListOf<Uri>()
+
+        val root = try {
+            DocumentFile.fromTreeUri(context, treeUri)
+        } catch (t: Throwable) {
+            android.util.Log.w(TAG, "Invalid tree uri: $treeUri", t)
+            null
+        }
+
+        if (root == null) {
+            // nothing we can do
+            return@withContext uris.toList()
+        }
+
+        // Helper to find a document by name and optionally size
+        fun findDocByNameAndSize(start: DocumentFile, name: String, size: Long?): DocumentFile? {
+            try {
+                val stack = ArrayDeque<DocumentFile>()
+                stack.add(start)
+                while (stack.isNotEmpty()) {
+                    val cur = stack.removeFirst()
+                    cur.listFiles().forEach { child ->
+                        if (child.isDirectory) stack.add(child)
+                        else {
+                            val matchesName = child.name == name
+                            val matchesSize = size == null || try { child.length() == size } catch (_: Throwable) { false }
+                            if (matchesName && matchesSize) return child
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w(TAG, "Error searching tree for $name", t)
+            }
+            return null
+        }
+
+        uris.forEach { uri ->
+            val displayName = try {
+                var dn: String? = null
+                val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+                context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                    val nameIdx = getColumnIndexSafe(cursor, MediaStore.MediaColumns.DISPLAY_NAME)
+                    val sizeIdx = getColumnIndexSafe(cursor, MediaStore.MediaColumns.SIZE)
+                    if (cursor.moveToFirst()) {
+                        dn = if (nameIdx >= 0) cursor.getString(nameIdx) else null
+                    }
+                }
+                dn ?: uri.lastPathSegment ?: uri.toString()
+            } catch (t: Throwable) {
+                uri.lastPathSegment ?: uri.toString()
+            }
+
+            val size = try {
+                var s: Long? = null
+                val projection = arrayOf(MediaStore.MediaColumns.SIZE)
+                context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                    val sizeIdx = getColumnIndexSafe(cursor, MediaStore.MediaColumns.SIZE)
+                    if (cursor.moveToFirst() && sizeIdx >= 0) s = cursor.getLong(sizeIdx)
+                }
+                s
+            } catch (_: Throwable) { null }
+
+            val found = findDocByNameAndSize(root, displayName ?: uri.lastPathSegment ?: "", size)
+            if (found != null) {
+                try {
+                    val deleted = found.delete()
+                    if (deleted) {
+                        // Purge / rescan
+                        val path = getPathFromUri(context, uri)
+                        if (!path.isNullOrBlank()) {
+                            purgeMediaStoreEntryForPath(context, path)
+                            MediaScannerConnection.scanFile(context, arrayOf(java.io.File(path).parent ?: path), null, null)
+                        }
+                    } else {
+                        remaining.add(uri)
+                    }
+                } catch (t: Throwable) {
+                    android.util.Log.w(TAG, "SAF deletion failed for $uri", t)
+                    remaining.add(uri)
+                }
+            } else {
+                remaining.add(uri)
+            }
+        }
+
+        // Update internal caches to reflect deletions
+        val currentUris = remaining.toSet()
+        val remainingFiles = _unnecessaryFiles.value.filter { file ->
+            if (file.uri != null) currentUris.contains(file.uri)
+            else File(file.path).exists()
+        }
+
+        _unnecessaryFiles.value = remainingFiles
+        _totalSize.value = remainingFiles.sumOf { it.size }
+        _filesByCategory.value = remainingFiles.groupBy { it.type }
+
+        return@withContext remaining
+    }
+
     fun getApkFiles(): List<UnnecessaryFile> = getFilesByCategory(FileType.OBSOLETE_APK)
 
     // --------------------------
@@ -945,6 +1268,43 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             cursor.getColumnIndex(columnName)
         } catch (_: Exception) {
             -1
+        }
+    }
+
+    private fun getPathFromUri(context: Context, uri: Uri?): String? {
+        if (uri == null) return null
+        return try {
+            var path: String? = null
+            val projection = arrayOf(MediaStore.MediaColumns.DATA)
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                val idx = getColumnIndexSafe(cursor, MediaStore.MediaColumns.DATA)
+                if (idx >= 0 && cursor.moveToFirst()) {
+                    path = cursor.getString(idx)
+                }
+            }
+            path
+        } catch (t: Throwable) {
+            android.util.Log.w(TAG, "getPathFromUri failed for $uri: ${t.message}", t)
+            null
+        }
+    }
+
+    private fun purgeMediaStoreEntryForPath(context: Context, path: String): Int {
+        return try {
+            val contentUri = MediaStore.Files.getContentUri("external")
+            val selection = "${MediaStore.MediaColumns.DATA} = ?"
+            val selectionArgs = arrayOf(path)
+            val rows = try {
+                context.contentResolver.delete(contentUri, selection, selectionArgs)
+            } catch (t: Throwable) {
+                android.util.Log.w(TAG, "MediaStore delete failed for $path: ${t.message}", t)
+                0
+            }
+            if (rows > 0) android.util.Log.d(TAG, "Purged $rows MediaStore entries for $path")
+            rows
+        } catch (t: Throwable) {
+            android.util.Log.w(TAG, "purgeMediaStoreEntryForPath failed for $path: ${t.message}", t)
+            0
         }
     }
 

@@ -103,5 +103,12 @@ class UninstallReminderViewModel(application: Application) : AndroidViewModel(ap
             else -> "$bytes B"
         }
     }
+
+    /**
+     * Remove an app from the unused apps list after it was uninstalled (confirmed by system).
+     */
+    fun markAppUninstalled(packageName: String) {
+        _unusedApps.value = _unusedApps.value.filter { it.appInfo.packageName != packageName }
+    }
 }
 

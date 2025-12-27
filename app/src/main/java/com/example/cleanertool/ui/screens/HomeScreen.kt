@@ -236,6 +236,63 @@ fun HomeScreen(navController: NavController) {
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+                // White-background utility cards below More Tools
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "More Utilities",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF212121),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ToolCard(
+                        title = "Notification Cleaner",
+                        icon = Icons.Default.Notifications,
+                        color = Color.White,
+                        contentColor = Color(0xFF212121),
+                        onClick = { navController.navigate("notification_cleaner") },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    ToolCard(
+                        title = "Large Files",
+                        icon = Icons.Default.Folder,
+                        color = Color.White,
+                        contentColor = Color(0xFF212121),
+                        onClick = { navController.navigate(Screen.LargeFiles.route) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ToolCard(
+                        title = "Uninstall Apps",
+                        icon = Icons.Default.Delete,
+                        color = Color.White,
+                        contentColor = Color(0xFF212121),
+                        onClick = { navController.navigate(Screen.UninstallReminder.route) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    ToolCard(
+                        title = "Speaker Cleaner",
+                        icon = Icons.Default.Speaker,
+                        color = Color.White,
+                        contentColor = Color(0xFF212121),
+                        onClick = { navController.navigate(Screen.SpeakerMaintenance.route) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
             
             // Native Ad
@@ -269,7 +326,8 @@ fun ToolCard(
     icon: ImageVector,
     color: Color,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    contentColor: Color = Color.White
 ) {
     Card(
         onClick = onClick,
@@ -292,14 +350,14 @@ fun ToolCard(
                 imageVector = icon,
                 contentDescription = title,
                 modifier = Modifier.size(40.dp),
-                tint = Color.White
+                tint = contentColor
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = contentColor,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }

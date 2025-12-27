@@ -105,6 +105,8 @@ dependencies {
     
     // CardView for native ad layouts
     implementation("androidx.cardview:cardview:1.0.0")
+    // DocumentFile (Storage Access Framework helpers)
+    implementation("androidx.documentfile:documentfile:1.0.1")
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

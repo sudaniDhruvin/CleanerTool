@@ -76,9 +76,16 @@ object MediaUtils {
         try {
             // Always use ContentResolver to read file as stream (works on all Android versions)
             // This avoids permission issues with direct file path access on Android 10+
-            val inputStream = context.contentResolver.openInputStream(uri)
-                ?: return@withContext null
-            
+            val inputStream = try {
+                context.contentResolver.openInputStream(uri)
+            } catch (t: Throwable) {
+                // Some devices/ROMs may crash inside the media provider when attempting
+                // to open certain HEIF/HEIC files (see runtime failure in media provider).
+                // Swallow provider-side RuntimeExceptions and return null so the app doesn't crash.
+                android.util.Log.e("MediaUtils", "Failed to open input stream for $uri: ${t.message}", t)
+                null
+            } ?: return@withContext null
+
             inputStream.use { stream ->
                 val tempFile = File(context.cacheDir, "temp_compress_${System.currentTimeMillis()}.jpg")
                 try {
@@ -98,12 +105,14 @@ object MediaUtils {
                     if (tempFile.exists()) {
                         tempFile.delete()
                     }
-                    throw e
+                    android.util.Log.e("MediaUtils", "Error copying stream to temp file: ${e.message}", e)
+                    return@withContext null
                 }
             }
-        } catch (e: Exception) {
-            android.util.Log.e("MediaUtils", "Failed to get file from URI: ${e.message}", e)
-            throw e // Re-throw to propagate error with details
+        } catch (t: Throwable) {
+            // Catch Throwable here as well to ensure Binder or provider-side errors do not crash the process
+            android.util.Log.e("MediaUtils", "Unexpected failure while getting file from URI: ${t.message}", t)
+            return@withContext null
         }
     }
     

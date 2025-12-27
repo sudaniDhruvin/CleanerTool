@@ -155,19 +155,48 @@ fun ImageDetailScreen(
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Image(
-                            painter = rememberAsyncImagePainter(
-                                ImageRequest.Builder(context)
-                                    .data(currentImageData.uri)
-                                    .crossfade(true)
-                                    .build()
-                            ),
-                            contentDescription = currentImageData.name,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
-                        )
+                            val nameLower = currentImageData.name.lowercase()
+                            if (nameLower.endsWith(".heic") || nameLower.endsWith(".heif")) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Description,
+                                        contentDescription = "HEIF image",
+                                        modifier = Modifier.size(96.dp),
+                                        tint = Color.Gray
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Preview not available for HEIF/HEIC files")
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(onClick = {
+                                        // Open the item in a system viewer using ACTION_VIEW
+                                        try {
+                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                                setDataAndType(currentImageData.uri, "image/*")
+                                                flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            android.util.Log.w("ImageDetail", "Failed to open HEIF with viewer: ${e.message}", e)
+                                        }
+                                    }) {
+                                        Text("Open in viewer")
+                                    }
+                                }
+                            } else {
+                                Image(
+                                    painter = rememberAsyncImagePainter(
+                                        ImageRequest.Builder(context)
+                                            .data(currentImageData.uri)
+                                            .crossfade(true)
+                                            .build()
+                                    ),
+                                    contentDescription = currentImageData.name,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(12.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
                         
                         // File size overlay at bottom right
                         Surface(

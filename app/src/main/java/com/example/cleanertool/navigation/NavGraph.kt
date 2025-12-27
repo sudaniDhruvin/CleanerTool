@@ -105,6 +105,9 @@ fun NavGraph(navController: NavHostController) {
         composable("notification_settings") {
             NotificationSettingsScreen(navController = navController)
         }
+        composable("notification_cleaner") {
+            NotificationCleanerScreen(navController = navController)
+        }
         composable("image_detail") {
             ImageDetailScreen(navController = navController)
         }

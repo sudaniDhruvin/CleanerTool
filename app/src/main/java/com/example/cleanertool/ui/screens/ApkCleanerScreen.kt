@@ -1,6 +1,6 @@
 package com.example.cleanertool.ui.screens
 
-import android.widget.Toast
+// using fully-qualified android.widget.Toast to avoid import conflicts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,6 +49,23 @@ import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.viewmodel.FileType
 import com.example.cleanertool.viewmodel.ScanViewModel
 import com.example.cleanertool.viewmodel.UnnecessaryFile
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.app.Activity
+import android.os.Build
+import android.provider.MediaStore
+import android.content.Intent
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.runtime.LaunchedEffect
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import android.Manifest
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +82,82 @@ fun ApkCleanerScreen(navController: NavController) {
             scanViewModel.scanDevice(context)
         }
     }
+
+    // Handle URIs that require user confirmation to delete
+    val activity = context as? Activity
+    val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            android.widget.Toast.makeText(context, "APK files removed", android.widget.Toast.LENGTH_SHORT).show()
+            scanViewModel.scanDevice(context)
+        } else {
+            android.widget.Toast.makeText(context, "Delete cancelled or failed", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Legacy deletion state for APK cleaner (shared logic as in LargeFilesScreen)
+    val coroutineScope = rememberCoroutineScope()
+    var pendingLegacyUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+    var showLegacyPermissionDialog by remember { mutableStateOf(false) }
+    var showManualDeleteDialog by remember { mutableStateOf(false) }
+    val requestWritePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            coroutineScope.launch {
+                val remaining2 = scanViewModel.attemptLegacyDeletion(context, pendingLegacyUris)
+                if (remaining2.isEmpty()) {
+                    android.widget.Toast.makeText(context, "APK files removed", android.widget.Toast.LENGTH_SHORT).show()
+                    scanViewModel.scanDevice(context)
+                } else {
+                    android.widget.Toast.makeText(context, "Unable to delete some APK files after granting permission.", android.widget.Toast.LENGTH_LONG).show()
+                }
+                pendingLegacyUris = emptyList()
+                showLegacyPermissionDialog = false
+            }
+        } else {
+            android.widget.Toast.makeText(context, "Permission denied. Unable to delete some APK files.", android.widget.Toast.LENGTH_LONG).show()
+            showLegacyPermissionDialog = false
+        }
+    }
+
+    LaunchedEffect(scanViewModel) {
+        scanViewModel.pendingDeleteUris.collectLatest { uris ->
+            if (uris.isEmpty()) return@collectLatest
+                if (activity == null) {
+                android.widget.Toast.makeText(context, "Unable to request delete permission", android.widget.Toast.LENGTH_SHORT).show()
+                return@collectLatest
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        val intentSender = MediaStore.createDeleteRequest(context.contentResolver, uris).intentSender
+                        val req = IntentSenderRequest.Builder(intentSender).build()
+                        deleteLauncher.launch(req)
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(context, "Failed to start delete confirmation", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+            } else {
+                // Try legacy deletion; if leftovers remain, prompt for permission where possible
+                val remaining = scanViewModel.attemptLegacyDeletion(context, uris)
+                if (remaining.isEmpty()) {
+                    android.widget.Toast.makeText(context, "APK files removed", android.widget.Toast.LENGTH_SHORT).show()
+                    scanViewModel.scanDevice(context)
+                } else {
+                    // Request WRITE_EXTERNAL_STORAGE permission if needed and retry
+                    val needsPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                    if (needsPermission && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                        // Launch permission request and retry in callback
+                        requestWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        pendingLegacyUris = remaining
+                        showLegacyPermissionDialog = true
+                    } else {
+                            // Allow user to manually open/delete the remaining files
+                            pendingLegacyUris = remaining
+                            showManualDeleteDialog = true
+                    }
+                }
+            }
+        }
+    }
+
+    // (legacy deletion state defined above)
 
     val apkFiles = remember(unnecessaryFiles) { scanViewModel.getFilesByCategory(FileType.OBSOLETE_APK) }
 
@@ -121,7 +214,7 @@ fun ApkCleanerScreen(navController: NavController) {
                     },
                     modifier = Modifier.weight(1f)
                 )
-                
+
                 // Native Ad
                 Spacer(modifier = Modifier.height(16.dp))
                 NativeAdView(
@@ -129,7 +222,7 @@ fun ApkCleanerScreen(navController: NavController) {
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
-                
+
                 // Banner Ad
                 Spacer(modifier = Modifier.height(8.dp))
                 BannerAdView(
@@ -137,10 +230,89 @@ fun ApkCleanerScreen(navController: NavController) {
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+
+    // Show permission dialog if needed
+    if (showLegacyPermissionDialog) {
+        AlertDialog(
+            onDismissRequest = { showLegacyPermissionDialog = false },
+            title = { Text("Storage permission required") },
+            text = { Text("To delete these APK files we need storage permission. Grant permission?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    requestWritePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                }) {
+                    Text("Grant")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLegacyPermissionDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showManualDeleteDialog || pendingLegacyUris.isNotEmpty()) {
+        val unresolved = pendingLegacyUris
+        val openTreeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                try {
+                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
+                    coroutineScope.launch {
+                        val remaining = scanViewModel.attemptSafDeletionWithTree(context, uri, unresolved)
+                        if (remaining.isEmpty()) {
+                            android.widget.Toast.makeText(context, "APK files removed", android.widget.Toast.LENGTH_SHORT).show()
+                            scanViewModel.scanDevice(context)
+                            pendingLegacyUris = emptyList()
+                            showManualDeleteDialog = false
+                        } else {
+                            pendingLegacyUris = remaining
+                            android.widget.Toast.makeText(context, "Some APK files couldn't be deleted.", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (t: Throwable) {
+                    android.widget.Toast.makeText(context, "Failed to obtain folder access", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showManualDeleteDialog = false },
+            title = { Text("Manual deletion required") },
+            text = {
+                Column {
+                    Text("Some APK files couldn't be deleted automatically. You can open each file to remove it manually.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    unresolved.take(20).forEach { uri ->
+                        val f = apkFiles.find { it.uri == uri }
+                        val label = f?.name ?: uri.toString()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(label, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                try {
+                                    val mime = context.contentResolver.getType(uri) ?: "*/*"
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, mime)
+                                        flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Unable to open file", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }) { Text("Open") }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { openTreeLauncher.launch(null) }) { Text("Grant folder access to delete") }
+                    if (unresolved.size > 20) Text("...and ${unresolved.size - 20} more")
+                }
+            },
+            confirmButton = { TextButton(onClick = { showManualDeleteDialog = false }) { Text("Close") } },
+            dismissButton = {}
+        )
     }
 }
 

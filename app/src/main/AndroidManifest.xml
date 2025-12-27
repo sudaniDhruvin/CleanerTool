@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission"/>
+        <!-- Allow requesting package delete result when available (API 26+). Note: this permission
+            is not granted to regular third-party apps on many devices (often signature|privileged). -->
+        <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-permission android:name="android.permission.GET_PACKAGE_SIZE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
@@ -91,6 +94,17 @@
                 <data android:scheme="package"/>
             </intent-filter>
         </receiver>
+
+        <!-- Notification listener service used for reading and clearing notifications -->
+        <service
+            android:name=".services.NotificationCaptureService"
+            android:label="Notification Capture"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
     </application>
 </manifest>
