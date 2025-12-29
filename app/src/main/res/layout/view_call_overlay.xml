@@ -21,7 +21,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#2196F3"
+        android:background="@drawable/banner_background"
+        android:clipToOutline="true"
         android:padding="12dp"
         android:gravity="center_vertical">
 
@@ -91,7 +92,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@android:color/white"
+        android:background="@drawable/overlay_card_background"
         android:padding="16dp">
 
         <!-- Main Info Section -->
@@ -143,7 +144,7 @@
                 android:layout_height="wrap_content"
                 android:text="View"
                 android:textColor="@android:color/white"
-                android:background="#2196F3"
+                android:background="@drawable/button_blue_background"
                 android:paddingHorizontal="20dp"
                 android:paddingVertical="8dp"
                 android:minWidth="0dp"
@@ -246,8 +247,18 @@
                     android:layout_marginTop="4dp" />
             </LinearLayout>
         </LinearLayout>
-
-        <!-- (removed bottom text button - using floating circular close icon instead) -->
+        <!-- Bottom Close button (replaces floating close icon) -->
+        <Button
+            android:id="@+id/btn_close_bottom"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/button_blue_background"
+            android:text="Close"
+            android:textColor="@android:color/white"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:layout_gravity="center" />
     </LinearLayout>
 
     </LinearLayout>

@@ -210,8 +210,7 @@ class CallOverlayService : Service() {
             }
             
             windowManager?.addView(overlayView, params)
-            // Create floating close button outside the overlay frame via WindowManager
-            createFloatingCloseView()
+            // Floating close button removed — using in-overlay Close button instead
             Log.d(TAG, "Overlay shown successfully. Mode: $mode, Name: $contactName, Number: $phoneNumber")
             Log.d(TAG, "Overlay will stay visible until user clicks close button (X icon)")
         } catch (e: Exception) {
@@ -305,10 +304,10 @@ class CallOverlayService : Service() {
         // Primary action button
         val primaryActionBtn = overlayView?.findViewById<Button>(R.id.btn_primary_action)
         if (mode == MODE_UNINSTALL) {
-            primaryActionBtn?.text = "Clean"
-            // Orange color for uninstall mode button
-            primaryActionBtn?.setBackgroundColor(0xFFFF9800.toInt())
+            // For uninstall mode we don't need a View button; hide it
+            primaryActionBtn?.visibility = View.GONE
         } else {
+            primaryActionBtn?.visibility = View.VISIBLE
             primaryActionBtn?.text = "View"
             // Blue color for call mode button
             primaryActionBtn?.setBackgroundColor(0xFF2196F3.toInt())
@@ -407,7 +406,8 @@ class CallOverlayService : Service() {
     private fun setupClickListeners(primaryText: String?, mode: String) {
         // Close button in banner - ONLY this button closes the overlay
         val closeBanner = overlayView?.findViewById<ImageView>(R.id.btn_close_banner)
-        // Floating close button is now a separate WindowManager view (createFloatingCloseView())
+        // The floating close button has been removed; we now expose a bottom Close button in the overlay
+        val closeBottom = overlayView?.findViewById<Button>(R.id.btn_close_bottom)
         
         // Ensure it's clickable and can receive touch events
         closeBanner?.isClickable = true
@@ -441,14 +441,21 @@ class CallOverlayService : Service() {
 
         // (bottom text close button removed; floating icon provides close action)
 
+        // Bottom Close button - performs same action as closeBanner
+        closeBottom?.setOnClickListener {
+            Log.d(TAG, "Bottom Close button clicked - closing overlay")
+            removeOverlay()
+        }
+
         // Touch feedback for floating close button (slightly different alpha to feel like an icon)
         // Touch feedback for floating close button is handled in createFloatingCloseView()
 
         // Primary action button (View/Clean) - Opens action and closes overlay
-        val primaryActionBtn = overlayView?.findViewById<Button>(R.id.btn_primary_action)
-        primaryActionBtn?.setOnClickListener {
+        val primaryActionBtnClick = overlayView?.findViewById<Button>(R.id.btn_primary_action)
+        primaryActionBtnClick?.setOnClickListener {
             if (mode == MODE_UNINSTALL) {
-                Log.d(TAG, "Clean button clicked for uninstalled app")
+                // No primary action in uninstall mode (button hidden), but keep safe fallback
+                Log.d(TAG, "Primary action clicked in uninstall mode - opening main screen")
                 val launchIntent = Intent(this, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 }
@@ -456,7 +463,10 @@ class CallOverlayService : Service() {
                 removeOverlay()
             } else {
                 Log.d(TAG, "View button clicked for call")
-                // TODO: Open call details or scan screen
+                // Open contact details (if contact exists) or contact insert if not
+                if (!primaryText.isNullOrBlank()) {
+                    openContactDetailsScreen(primaryText)
+                }
                 removeOverlay()
             }
         }
@@ -562,6 +572,57 @@ class CallOverlayService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in openContactEditScreen", e)
+        }
+    }
+
+    /**
+     * Open the contact details (view) screen for the given phone number.
+     * If the contact exists, open the contact details via lookup URI.
+     * If the contact doesn't exist, open the insert contact screen with the number prefilled.
+     */
+    private fun openContactDetailsScreen(phoneNumber: String) {
+        try {
+            val contactId = getContactIdFromNumber(phoneNumber)
+            if (contactId != null) {
+                // Try to build lookup URI and view contact
+                try {
+                    val lookupUri = ContactsContract.Contacts.getLookupUri(contactId, null)
+                    if (lookupUri != null) {
+                        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                            data = lookupUri
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(viewIntent)
+                        Log.d(TAG, "Opened contact details for ID: $contactId")
+                        return
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to open contact via lookup uri", e)
+                }
+                // Fallback: open contact URI directly
+                try {
+                    val contactUri = android.net.Uri.withAppendedPath(ContactsContract.Contacts.CONTENT_URI, contactId.toString())
+                    val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                        data = contactUri
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(viewIntent)
+                    return
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fallback open contact details failed", e)
+                }
+            }
+
+            // Contact not found: open insert contact screen with prefilled phone
+            val insertIntent = Intent(Intent.ACTION_INSERT).apply {
+                type = ContactsContract.Contacts.CONTENT_TYPE
+                putExtra(ContactsContract.Intents.Insert.PHONE, phoneNumber)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(insertIntent)
+            Log.d(TAG, "Opened new contact insert for number: $phoneNumber")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening contact details for number: $phoneNumber", e)
         }
     }
     
@@ -810,13 +871,7 @@ class CallOverlayService : Service() {
                 // Show container once ad is loaded and position floating close relative to overlay
                 container.post {
                     container.visibility = View.VISIBLE
-                    try {
-                        createFloatingCloseView(alignToOverlay = true)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error creating floating close view on ad load", e)
-                        // Fallback: create default floating close at bottom center
-                        createFloatingCloseView()
-                    }
+                    // Do not create floating close view here — using in-overlay Close button
                 }
             }
 
