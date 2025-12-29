@@ -29,6 +29,8 @@ import com.example.cleanertool.ads.NativeAdView
 import com.example.cleanertool.viewmodel.FileType
 import com.example.cleanertool.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 private val JunkCategoryTypes = setOf(FileType.JUNK, FileType.CACHE)
 private val DefaultSelectedTypes: Set<FileType> = FileType.values().toSet()
@@ -56,23 +58,27 @@ fun ScanScreen(navController: NavController) {
         }
     }
 
-    // Start scanning when screen loads
-    LaunchedEffect(Unit) {
+    // Cleaning state and dialog controls
+    val isCleaning by viewModel.isCleaningState.collectAsState()
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    val cleanProgress by viewModel.cleanProgress.collectAsState()
+    val cleanResult by viewModel.cleanResult.collectAsState()
+
+    // Compute selected total size and whether there are selected files
+    val selectedTotalSize = remember(selectedCategories, filesByCategory) {
+        selectedCategories.sumOf { category -> viewModel.getTotalSizeByCategory(category) }
+    }
+
+    val hasSelectedFiles = selectedCategories.isNotEmpty() && selectedTotalSize > 0
+
+    // Start scanning when screen loads if nothing has been scanned yet
+    LaunchedEffect(viewModel) {
         if (!isScanning && unnecessaryFiles.isEmpty()) {
             viewModel.scanDevice(context)
         }
     }
 
-    // Calculate total size of selected categories
-    val selectedTotalSize = remember(selectedCategories, filesByCategory) {
-        selectedCategories.sumOf { category ->
-            viewModel.getTotalSizeByCategory(category)
-        }
-    }
-
-    // Validate if any files are selected
-    val hasSelectedFiles = selectedTotalSize > 0
-
+    // Start scanning when screen loads
     Scaffold(
         topBar = {
             TopAppBar(
@@ -102,9 +108,8 @@ fun ScanScreen(navController: NavController) {
                 ) {
                     Button(
                         onClick = {
-                            // Store selected categories in ViewModel for CleanScreen to access
-                            viewModel.setSelectedCategories(selectedCategories)
-                            navController.navigate("clean")
+                            if (isCleaning) return@Button
+                            showConfirmDialog = true
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -114,7 +119,7 @@ fun ScanScreen(navController: NavController) {
                             containerColor = if (hasSelectedFiles) Color(0xFF64B5F6) else Color.Gray
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = hasSelectedFiles && error == null
+                        enabled = hasSelectedFiles && error == null && !isCleaning
                     ) {
                         Text(
                             text = "CLEAN",
@@ -125,8 +130,32 @@ fun ScanScreen(navController: NavController) {
                     }
                 }
             }
-        }
+        },
     ) { paddingValues ->
+        // Show full screen loader while cleaning
+        if (isCleaning && cleanResult == null) {
+            FullScreenLoader(progress = cleanProgress)
+        }
+
+        // Confirmation dialog
+        if (showConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showConfirmDialog = false },
+                title = { Text("Confirm clean") },
+                text = { Text("This will delete selected files and free ${viewModel.formatFileSize(selectedTotalSize)}. Proceed?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        // Persist selection to ViewModel and start cleaning immediately
+                        viewModel.setSelectedCategories(selectedCategories)
+                        showConfirmDialog = false
+                        viewModel.cleanFiles(context, selectedCategories)
+                    }) { Text("Proceed") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConfirmDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
         Box(modifier = Modifier.fillMaxSize()) {
             // Orange/Red gradient background (top section)
             Box(

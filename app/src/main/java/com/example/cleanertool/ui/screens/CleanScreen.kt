@@ -51,10 +51,10 @@ fun CleanScreen(navController: NavController) {
         }
     }
     
-    var isCleaning by remember { mutableStateOf(false) }
-    var cleanProgress by remember { mutableStateOf(0) }
-    var cleaningComplete by remember { mutableStateOf(false) }
-    var cleaningError by remember { mutableStateOf<String?>(null) }
+    val isCleaning by viewModel.isCleaningState.collectAsState()
+    val cleanProgress by viewModel.cleanProgress.collectAsState()
+    val cleaningError by viewModel.cleanError.collectAsState()
+    val cleanResult by viewModel.cleanResult.collectAsState()
 
     // Calculate selected files and size
     val selectedFiles = remember(selectedCategories, filesByCategory) {
@@ -69,29 +69,8 @@ fun CleanScreen(navController: NavController) {
         }
     }
 
-    LaunchedEffect(isCleaning) {
-        if (isCleaning && !cleaningComplete) {
-            cleaningError = null
-            try {
-                viewModel.cleanFiles(context, selectedCategories) { progress ->
-                    cleanProgress = progress
-                }
-                cleaningComplete = true
-                // Navigate to RAM/Process screen after cleaning completes
-                delay(500) // Small delay to show 100%
-                navController.navigate("ram_process") {
-                    popUpTo("clean") { inclusive = true }
-                }
-            } catch (e: Exception) {
-                cleaningError = e.message ?: "Failed to clean files"
-                cleaningComplete = true
-                isCleaning = false
-            }
-        }
-    }
-    
     // Show full screen loader when cleaning
-    if (isCleaning && !cleaningComplete) {
+    if (isCleaning && cleanResult == null) {
         FullScreenLoader(progress = cleanProgress)
     }
 
@@ -109,7 +88,7 @@ fun CleanScreen(navController: NavController) {
                         .padding(24.dp)
                 ) {
                     if (isCleaning) {
-                        // Show cleaning progress
+                        // Show cancel action while cleaning
                         Text(
                             text = "Cleaning... $cleanProgress%",
                             style = MaterialTheme.typography.titleMedium,
@@ -125,11 +104,52 @@ fun CleanScreen(navController: NavController) {
                                 .height(6.dp),
                             color = MaterialTheme.colorScheme.primary
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.cancelCleaning() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Cancel")
+                        }
+                    } else if (cleanResult != null) {
+                        // Show summary
+                        val r = cleanResult
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Clean complete",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Freed: ${viewModel.formatFileSize(r?.freedBytes ?: 0L)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Button(onClick = {
+                                    viewModel.clearCleanResult()
+                                    navController.popBackStack()
+                                }, modifier = Modifier.weight(1f)) {
+                                    Text("Done")
+                                }
+                                OutlinedButton(onClick = {
+                                    // Stay on screen to view remaining files
+                                    viewModel.clearCleanResult()
+                                }, modifier = Modifier.weight(1f)) {
+                                    Text("View remaining")
+                                }
+                            }
+                        }
                     } else {
                         Button(
                             onClick = {
                                 if (selectedCategories.isNotEmpty() && selectedTotalSize > 0) {
-                                    isCleaning = true
+                                    viewModel.cleanFiles(context, selectedCategories)
                                 }
                             },
                             modifier = Modifier

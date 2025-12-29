@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.math.BigInteger
@@ -81,12 +82,38 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedCategories = MutableStateFlow<Set<FileType>>(emptySet())
     val selectedCategories: StateFlow<Set<FileType>> = _selectedCategories.asStateFlow()
 
+    // Cleaning state
+    private var cleaningJob: kotlinx.coroutines.Job? = null
+    private val _isCleaningState = MutableStateFlow(false)
+    val isCleaningState: StateFlow<Boolean> = _isCleaningState.asStateFlow()
+    private val _cleanProgress = MutableStateFlow(0)
+    val cleanProgress: StateFlow<Int> = _cleanProgress.asStateFlow()
+    private val _cleanError = MutableStateFlow<String?>(null)
+    val cleanError: StateFlow<String?> = _cleanError.asStateFlow()
+
+    data class CleanResult(val deletedCount: Int, val freedBytes: Long, val failedCount: Int)
+    private val _cleanResult = MutableStateFlow<CleanResult?>(null)
+    val cleanResult: StateFlow<CleanResult?> = _cleanResult.asStateFlow()
+
     // DEBUG MODE - set to true to see ALL files
     private val DEBUG_SHOW_ALL_FILES = true
     private val DEBUG_MIN_FILE_SIZE = 100 * 1024L // 100 KB
 
     fun setSelectedCategories(categories: Set<FileType>) {
         _selectedCategories.value = categories
+    }
+
+    fun cancelCleaning() {
+        cleaningJob?.cancel()
+        cleaningJob = null
+        _isCleaningState.value = false
+        _cleanProgress.value = 0
+        _cleanError.value = "Cancelled"
+    }
+
+    fun clearCleanResult() {
+        _cleanResult.value = null
+        _cleanError.value = null
     }
 
     /**
@@ -919,8 +946,36 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         files: List<UnnecessaryFile>,
         onProgress: (Int) -> Unit = {}
     ) {
-        viewModelScope.launch {
-            performDeletion(context, files, onProgress)
+        // Cancel any existing cleaning run
+        cleaningJob?.cancel()
+        cleaningJob = viewModelScope.launch {
+            _isCleaningState.value = true
+            _cleanProgress.value = 0
+            _cleanError.value = null
+            try {
+                val result = performDeletion(context, files) { progress ->
+                    _cleanProgress.value = progress
+                    onProgress(progress)
+                }
+                _cleanResult.value = CleanResult(result.deletedCount, result.freedBytes, result.failedCount)
+            } catch (e: CancellationException) {
+                _cleanError.value = "Cancelled"
+            } catch (t: Throwable) {
+                _cleanError.value = t.message ?: "Unknown error"
+            } finally {
+                _isCleaningState.value = false
+                cleaningJob = null
+
+                // Trigger an automatic rescan to refresh totals and categories after cleaning
+                viewModelScope.launch {
+                    try {
+                        kotlinx.coroutines.delay(500)
+                        scanDevice(context)
+                    } catch (_: Exception) {
+                        // ignore rescan failures
+                    }
+                }
+            }
         }
     }
 
@@ -928,10 +983,10 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         context: Context,
         filesToDelete: List<UnnecessaryFile>,
         onProgress: (Int) -> Unit
-    ) {
+    ): CleanResult {
         if (filesToDelete.isEmpty()) {
             withContext(Dispatchers.Main) { onProgress(100) }
-            return
+            return CleanResult(0, 0L, 0)
         }
 
         var deletedCount = 0
@@ -1021,6 +1076,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 _pendingDeleteUris.emit(pendingUserDeleteUris.toList())
             }
         }
+        return CleanResult(deletedCount, deletedSize, failedCount)
     }
 
     fun getDuplicateGroups(): List<List<UnnecessaryFile>> {

@@ -257,7 +257,8 @@ fun HomeScreen(navController: NavController) {
                         color = Color.White,
                         contentColor = Color(0xFF212121),
                         onClick = { navController.navigate("notification_cleaner") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        cardHeight = 110.dp
                     )
 
                     ToolCard(
@@ -266,7 +267,8 @@ fun HomeScreen(navController: NavController) {
                         color = Color.White,
                         contentColor = Color(0xFF212121),
                         onClick = { navController.navigate(Screen.LargeFiles.route) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        cardHeight = 110.dp
                     )
                 }
 
@@ -281,7 +283,8 @@ fun HomeScreen(navController: NavController) {
                         color = Color.White,
                         contentColor = Color(0xFF212121),
                         onClick = { navController.navigate(Screen.UninstallReminder.route) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        cardHeight = 110.dp
                     )
 
                     ToolCard(
@@ -290,7 +293,8 @@ fun HomeScreen(navController: NavController) {
                         color = Color.White,
                         contentColor = Color(0xFF212121),
                         onClick = { navController.navigate(Screen.SpeakerMaintenance.route) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        cardHeight = 110.dp
                     )
                 }
             }
@@ -327,12 +331,14 @@ fun ToolCard(
     color: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    contentColor: Color = Color.White
+    contentColor: Color = Color.White,
+    cardHeight: androidx.compose.ui.unit.Dp? = null
 ) {
+    val baseModifier = if (cardHeight != null) modifier.height(cardHeight) else modifier.aspectRatio(1f)
+
     Card(
         onClick = onClick,
-        modifier = modifier
-            .aspectRatio(1f),
+        modifier = baseModifier,
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = color
@@ -342,20 +348,20 @@ fun ToolCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(if (cardHeight != null) 12.dp else 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(if (cardHeight != null) 28.dp else 40.dp),
                 tint = contentColor
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = if (cardHeight != null) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 color = contentColor,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
